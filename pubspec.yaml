@@ -1,0 +1,42 @@
+name: citoyen_app
+description: Application mobile citoyenne — Gestion des réclamations (Mauritanie)
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:      # ✅ AJOUTER CETTE LIGNE
+    sdk: flutter
+  go_router: ^13.2.0
+  flutter_bloc: ^8.1.4
+  equatable: ^2.0.5
+  dio: ^5.4.3
+  retrofit: ^4.1.0
+  flutter_secure_storage: ^9.0.0
+  get_it: ^7.6.7
+  dartz: ^0.10.1
+  freezed_annotation: ^2.4.1
+  json_annotation: ^4.8.1
+  flutter_svg: ^2.0.10
+  cached_network_image: ^3.3.1
+  image_picker: ^1.0.7
+  lottie: ^3.1.0
+  
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  build_runner: ^2.4.8
+  freezed: ^2.4.7
+  json_serializable: ^6.7.1
+  retrofit_generator: ^9.7.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
