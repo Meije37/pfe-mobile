@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -64,8 +65,35 @@ class _SplashPageState extends State<SplashPage>
     );
   }
 
+  // ✅ Vérifie si le token JWT n'est pas expiré
+  bool _isTokenValid(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+
+      String payload = parts[1];
+      // Padding base64
+      while (payload.length % 4 != 0) {
+        payload += '=';
+      }
+
+      final decoded = utf8.decode(base64Url.decode(payload));
+      final Map<String, dynamic> json =
+          Map<String, dynamic>.from(jsonDecode(decoded) as Map);
+
+      final exp = json['exp'] as int?;
+      if (exp == null) return false;
+
+      final expDate = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+      return DateTime.now().isBefore(expDate);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _scheduleRedirect() async {
-    await Future.delayed(AppConstants.splashDuration);
+    // ✅ Attente plus longue sur Android (émulateur lent)
+    await Future.delayed(const Duration(milliseconds: 3000));
     if (!mounted) return;
 
     final token = await _storage.read(key: AppConstants.tokenKey);
@@ -73,9 +101,14 @@ class _SplashPageState extends State<SplashPage>
 
     if (!mounted) return;
 
-    if (token != null && token.isNotEmpty && role == AppConstants.roleCitoyen) {
+    // Token valide + non expiré + rôle CITOYEN → home
+    if (token != null &&
+        token.isNotEmpty &&
+        role == AppConstants.roleCitoyen &&
+        _isTokenValid(token)) {
       context.go(AppRoutes.home);
     } else {
+      // Token absent ou expiré → nettoyage + login
       await _storage.deleteAll();
       if (mounted) context.go(AppRoutes.login);
     }
@@ -130,7 +163,8 @@ class _SplashPageState extends State<SplashPage>
                   const SizedBox(height: 64),
                   AnimatedBuilder(
                     animation: _progressAnim,
-                    builder: (_, __) => _ProgressBar(value: _progressAnim.value),
+                    builder: (_, __) =>
+                        _ProgressBar(value: _progressAnim.value),
                   ),
                 ],
               ),
