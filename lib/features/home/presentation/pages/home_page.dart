@@ -3,9 +3,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/network/dio_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/network/dio_client.dart';
+import '../../../../shared/widgets/empty_state_widget.dart';
+import '../../../../shared/widgets/loading_widget.dart';
+import '../../../../shared/widgets/reclamation_card.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -45,10 +48,9 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadStats() async {
     try {
-      final response = await DioClient.instance.dio
-          .get(AppConstants.citoyenStats);
+      final r = await DioClient.instance.dio.get(AppConstants.citoyenStats);
       setState(() {
-        _stats        = response.data as Map<String, dynamic>;
+        _stats        = r.data as Map<String, dynamic>;
         _loadingStats = false;
       });
     } catch (_) {
@@ -58,9 +60,9 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadReclamations() async {
     try {
-      final response = await DioClient.instance.dio
+      final r = await DioClient.instance.dio
           .get(AppConstants.citoyenReclamations);
-      final list = response.data as List<dynamic>;
+      final list = r.data as List<dynamic>;
       setState(() {
         _reclamations = list.take(5).toList();
         _loadingRecs  = false;
@@ -71,190 +73,215 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _logout() async {
-    await _storage.deleteAll();
-    if (mounted) context.go('/login');
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.primary,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppConstants.radiusCard)),
+        title: Text('Se déconnecter ?',
+            style: AppTextStyles.h3.copyWith(color: Colors.white)),
+        content: Text('Vous serez redirigé vers la connexion.',
+            style: AppTextStyles.bodySm.copyWith(
+                color: AppColors.sidebarText)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler',
+                style: TextStyle(color: AppColors.accent)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Déconnecter'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await _storage.deleteAll();
+      if (mounted) context.go('/login');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: IndexedStack(
-              index: _selectedTab,
-              children: [
-                _buildDashboardTab(),
-                _buildReclamationsTab(),
-              ],
-            ),
+      body: Column(children: [
+        _buildHeader(),
+        Expanded(
+          child: IndexedStack(
+            index: _selectedTab,
+            children: [
+              _buildDashboardTab(),
+              _buildReclamationsTab(),
+              _buildProfileTab(),
+            ],
           ),
-          _buildBottomNav(),
-        ],
-      ),
+        ),
+        _buildBottomNav(),
+      ]),
     );
   }
 
-  // ── Header ────────────────────────────────────────────────────────────
+  // ── Header ─────────────────────────────────────────────────────────────
   Widget _buildHeader() {
     return Container(
       color: AppColors.primaryDark,
       padding: const EdgeInsets.fromLTRB(20, 48, 20, 20),
-      child: Row(
-        children: [
-          // Avatar initiales
-          Container(
-            width: 42, height: 42,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.accent.withOpacity(0.2),
-              border: Border.all(
-                color: AppColors.accent.withOpacity(0.4),
-                width: 1.5,
-              ),
-            ),
-            child: Center(
-              child: Text(
-                _initials,
+      child: Row(children: [
+        // Avatar
+        Container(
+          width: 42, height: 42,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.accent.withOpacity(0.2),
+            border: Border.all(
+                color: AppColors.accent.withOpacity(0.4), width: 1.5),
+          ),
+          child: Center(
+            child: Text(_initials,
                 style: const TextStyle(
                   color: AppColors.accent,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+                )),
           ),
-          const SizedBox(width: 14),
+        ),
+        const SizedBox(width: 14),
 
-          // Bonjour
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Bonjour 👋',
+        // Email
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Bonjour 👋',
                   style: AppTextStyles.bodySm.copyWith(
-                    color: AppColors.sidebarText,
-                  ),
-                ),
-                Text(
-                  _email.isEmpty ? 'Citoyen' : _email,
-                  style: AppTextStyles.h3.copyWith(
-                    color: Colors.white,
-                    fontSize: 14,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+                      color: AppColors.sidebarText)),
+              Text(
+                _email.isEmpty ? 'Citoyen' : _email,
+                style: AppTextStyles.h3.copyWith(
+                    color: Colors.white, fontSize: 14),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
+        ),
 
-          // Déconnexion
-          IconButton(
-            onPressed: _logout,
-            icon: const Icon(
-              Icons.logout,
-              color: AppColors.sidebarText,
-              size: 20,
-            ),
-            tooltip: 'Se déconnecter',
-          ),
-        ],
-      ),
+        // Notifications (décoratif)
+        // IconButton(
+        //   onPressed: () {},
+        //   icon: const Icon(Icons.notifications_none,
+        //       color: AppColors.sidebarText, size: 22),
+        // ),
+
+        // Déconnexion
+        IconButton(
+          onPressed: _logout,
+          icon: const Icon(Icons.logout,
+              color: AppColors.sidebarText, size: 20),
+          tooltip: 'Se déconnecter',
+        ),
+      ]),
     );
   }
 
-  // ── Tab Dashboard ─────────────────────────────────────────────────────
+  // ── TAB 0 : Dashboard ─────────────────────────────────────────────────
   Widget _buildDashboardTab() {
     return RefreshIndicator(
       onRefresh: () async {
         await _loadStats();
         await _loadReclamations();
       },
+      color: AppColors.accent,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(AppConstants.paddingPage),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Stats cards
-            _loadingStats
-                ? const Center(child: CircularProgressIndicator())
-                : _buildStatsGrid(),
-
+            // Stats
+            if (_loadingStats)
+              const LoadingWidget(message: 'Chargement des stats…')
+            else
+              _buildStatsGrid(),
             const SizedBox(height: 24),
 
-            // Bouton nouvelle réclamation
+            // CTA nouvelle réclamation
             _buildNewReclamationButton(),
-
             const SizedBox(height: 24),
 
-            // Dernières réclamations
-            Row(
-              children: [
-                Text('Récentes', style: AppTextStyles.h3),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => setState(() => _selectedTab = 1),
-                  child: Text(
-                    'Voir tout',
+            // Titre section + lien
+            Row(children: [
+              Text('Dernières réclamations', style: AppTextStyles.h3),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => _selectedTab = 1),
+                child: Text('Voir tout →',
                     style: AppTextStyles.bodySm.copyWith(
-                      color: AppColors.primaryLight,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
+                        color: AppColors.primaryLight)),
+              ),
+            ]),
+            const SizedBox(height: 12),
 
-            _loadingRecs
-                ? const Center(child: CircularProgressIndicator())
-                : _reclamations.isEmpty
-                    ? _buildEmptyState()
-                    : Column(
-                        children: _reclamations
-                            .map((r) => _buildReclamationCard(r))
-                            .toList(),
-                      ),
+            // Liste récente
+            if (_loadingRecs)
+              const LoadingWidget()
+            else if (_reclamations.isEmpty)
+              EmptyStateWidget(
+                message: 'Aucune réclamation',
+                subtitle: 'Déposez votre première réclamation',
+                actionLabel: 'Nouvelle réclamation',
+                onAction: () =>
+                    context.go('/home/nouvelle-reclamation'),
+              )
+            else
+              Column(
+                children: _reclamations
+                    .map((r) => ReclamationCard(
+                          reclamation: r as Map<String, dynamic>,
+                          onTap: () => context
+                              .go('/home/reclamations/${r['id']}'),
+                        ))
+                    .toList(),
+              ),
           ],
         ),
       ),
     );
   }
 
-  // ── Stats grid ────────────────────────────────────────────────────────
+  // ── Stats grid 2x2 ───────────────────────────────────────────────────
   Widget _buildStatsGrid() {
-    final stats = [
-      {
-        'label': 'Total',
-        'value': '${_stats?['total'] ?? 0}',
-        'icon': Icons.file_copy_outlined,
-        'color': AppColors.primaryLight,
-        'bg': AppColors.primaryLight.withOpacity(0.1),
-      },
-      {
-        'label': 'Ouvertes',
-        'value': '${_stats?['ouvertes'] ?? 0}',
-        'icon': Icons.folder_open_outlined,
-        'color': AppColors.info,
-        'bg': AppColors.badgeOuverteBg,
-      },
-      {
-        'label': 'En cours',
-        'value': '${_stats?['enCours'] ?? 0}',
-        'icon': Icons.autorenew,
-        'color': AppColors.warning,
-        'bg': AppColors.badgeEnCoursBg,
-      },
-      {
-        'label': 'Résolues',
-        'value': '${_stats?['resolues'] ?? 0}',
-        'icon': Icons.check_circle_outline,
-        'color': AppColors.success,
-        'bg': AppColors.badgeResolieBg,
-      },
+    final items = [
+      (
+        label: 'Total',
+        value: '${_stats?['total'] ?? 0}',
+        icon: Icons.file_copy_outlined,
+        color: AppColors.primaryLight,
+        bg: AppColors.primaryLight.withOpacity(0.1),
+      ),
+      (
+        label: 'Ouvertes',
+        value: '${_stats?['ouvertes'] ?? 0}',
+        icon: Icons.folder_open_outlined,
+        color: AppColors.info,
+        bg: AppColors.badgeOuverteBg,
+      ),
+      (
+        label: 'En cours',
+        value: '${_stats?['enCours'] ?? 0}',
+        icon: Icons.autorenew,
+        color: AppColors.warning,
+        bg: AppColors.badgeEnCoursBg,
+      ),
+      (
+        label: 'Résolues',
+        value: '${_stats?['resolues'] ?? 0}',
+        icon: Icons.check_circle_outline,
+        color: AppColors.success,
+        bg: AppColors.badgeResolieBg,
+      ),
     ];
 
     return GridView.count(
@@ -263,52 +290,48 @@ class _HomePageState extends State<HomePage> {
       mainAxisSpacing: 12,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.6,
-      children: stats.map((s) {
+      childAspectRatio: 1.65,
+      children: items.map((s) {
         return Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(AppConstants.radiusCard),
             border: Border.all(color: AppColors.border),
-          ),
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 38, height: 38,
-                decoration: BoxDecoration(
-                  color: s['bg'] as Color,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  s['icon'] as IconData,
-                  color: s['color'] as Color,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    s['value'] as String,
-                    style: AppTextStyles.h2.copyWith(fontSize: 22),
-                  ),
-                  Text(
-                    s['label'] as String,
-                    style: AppTextStyles.labelCaps,
-                  ),
-                ],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                color: s.bg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(s.icon, color: s.color, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(s.value,
+                    style: AppTextStyles.h2.copyWith(fontSize: 22)),
+                Text(s.label, style: AppTextStyles.labelCaps),
+              ],
+            ),
+          ]),
         );
       }).toList(),
     );
   }
 
-  // ── Bouton nouvelle réclamation ───────────────────────────────────────
+  // ── CTA nouvelle réclamation ─────────────────────────────────────────
   Widget _buildNewReclamationButton() {
     return GestureDetector(
       onTap: () => context.go('/home/nouvelle-reclamation'),
@@ -316,224 +339,276 @@ class _HomePageState extends State<HomePage> {
         width: double.infinity,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: AppColors.primary,
-          borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-          border: Border.all(
-            color: AppColors.accent.withOpacity(0.3),
+          gradient: const LinearGradient(
+            colors: [AppColors.primaryDark, AppColors.primary],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.accent.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.add_circle_outline,
-                color: AppColors.accent,
-                size: 26,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Déposer une réclamation',
-                    style: AppTextStyles.h3.copyWith(
-                      color: Colors.white,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Signalez un problème dans votre quartier',
-                    style: AppTextStyles.bodySm.copyWith(
-                      color: AppColors.sidebarText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              color: AppColors.accent,
-              size: 16,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Card réclamation ──────────────────────────────────────────────────
-  Widget _buildReclamationCard(Map<String, dynamic> r) {
-    final statut   = r['statut'] as String? ?? '';
-    final priorite = r['priorite'] as String? ?? '';
-    final titre    = r['titre'] as String? ?? '—';
-    final ref      = r['reference'] as String? ?? '';
-    final date     = (r['dateCreation'] as String? ?? '').length >= 10
-        ? (r['dateCreation'] as String).substring(0, 10)
-        : '';
-
-    return GestureDetector(
-      onTap: () => context.go(
-        '/home/reclamations/${r['id']}',
-      ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
           borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: AppColors.accent.withOpacity(0.3)),
         ),
-        child: Row(
-          children: [
-            // Barre colorée statut
-            Container(
-              width: 4, height: 48,
-              decoration: BoxDecoration(
-                color: _statutColor(statut),
-                borderRadius: BorderRadius.circular(2),
-              ),
+        child: Row(children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 12),
-
-            // Infos
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    titre,
-                    style: AppTextStyles.body.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        ref,
-                        style: AppTextStyles.labelCaps.copyWith(
-                          color: AppColors.primaryLight,
-                          fontSize: 10,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        date,
-                        style: AppTextStyles.labelCaps.copyWith(
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 8),
-
-            // Badges
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: const Icon(Icons.add_circle_outline,
+                color: AppColors.accent, size: 26),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildBadge(statut),
-                const SizedBox(height: 4),
-                _buildPrioriteBadge(priorite),
+                Text('Déposer une réclamation',
+                    style: AppTextStyles.h3.copyWith(
+                        color: Colors.white, fontSize: 15)),
+                const SizedBox(height: 2),
+                Text('Signalez un problème dans votre quartier',
+                    style: AppTextStyles.bodySm.copyWith(
+                        color: AppColors.sidebarText)),
               ],
             ),
-          ],
-        ),
+          ),
+          const Icon(Icons.arrow_forward_ios,
+              color: AppColors.accent, size: 16),
+        ]),
       ),
     );
   }
 
-  // ── Tab Réclamations ──────────────────────────────────────────────────
+  // ── TAB 1 : Réclamations ─────────────────────────────────────────────
   Widget _buildReclamationsTab() {
-    return RefreshIndicator(
-      onRefresh: _loadReclamations,
-      child: _loadingRecs
-          ? const Center(child: CircularProgressIndicator())
-          : _reclamations.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.all(AppConstants.paddingPage),
-                  itemCount: _reclamations.length,
-                  itemBuilder: (_, i) =>
-                      _buildReclamationCard(
-                        _reclamations[i] as Map<String, dynamic>,
-                      ),
-                ),
-    );
-  }
-
-  // ── Empty state ───────────────────────────────────────────────────────
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.folder_open_outlined,
-              size: 64,
-              color: AppColors.textMuted.withOpacity(0.4),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Aucune réclamation',
-              style: AppTextStyles.h3.copyWith(
-                color: AppColors.textMuted,
+    return Column(children: [
+      // Sous-titre + bouton
+      Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(children: [
+          Text('Toutes mes réclamations', style: AppTextStyles.h3),
+          const Spacer(),
+          GestureDetector(
+            onTap: () => context.go('/home/reclamations'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: Text('Filtrer',
+                  style: AppTextStyles.labelCaps.copyWith(
+                      color: Colors.white, fontSize: 11)),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Déposez votre première réclamation',
-              style: AppTextStyles.bodySm,
-              textAlign: TextAlign.center,
+          ),
+        ]),
+      ),
+
+      // Liste
+      Expanded(
+        child: _loadingRecs
+            ? const LoadingWidget()
+            : _reclamations.isEmpty
+                ? EmptyStateWidget(
+                    message: 'Aucune réclamation',
+                    subtitle: 'Déposez votre première réclamation',
+                    actionLabel: 'Nouvelle réclamation',
+                    onAction: () =>
+                        context.go('/home/nouvelle-reclamation'),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadReclamations,
+                    color: AppColors.accent,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(
+                          AppConstants.paddingPage),
+                      itemCount: _reclamations.length,
+                      itemBuilder: (_, i) => ReclamationCard(
+                        reclamation:
+                            _reclamations[i] as Map<String, dynamic>,
+                        onTap: () => context.go(
+                            '/home/reclamations/${_reclamations[i]['id']}'),
+                      ),
+                    ),
+                  ),
+      ),
+
+      // Bouton voir toutes
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: OutlinedButton.icon(
+            onPressed: () => context.go('/home/reclamations'),
+            icon: const Icon(Icons.list_alt, size: 18,
+                color: AppColors.primary),
+            label: const Text('Voir toutes mes réclamations',
+                style: TextStyle(color: AppColors.primary)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.primary),
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () =>
-                  context.go('/home/nouvelle-reclamation'),
-              icon: const Icon(Icons.add),
-              label: const Text('Nouvelle réclamation'),
-            ),
-          ],
+          ),
         ),
       ),
+    ]);
+  }
+
+  // ── TAB 2 : Profil (inline dans le home) ─────────────────────────────
+  Widget _buildProfileTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppConstants.paddingPage),
+      child: Column(children: [
+        const SizedBox(height: 20),
+
+        // Avatar
+        Container(
+          width: 80, height: 80,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.accent.withOpacity(0.15),
+            border: Border.all(
+                color: AppColors.accent.withOpacity(0.4), width: 2),
+          ),
+          child: Center(
+            child: Text(_initials,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.accent,
+                )),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(_email,
+            style: AppTextStyles.h3.copyWith(fontSize: 16)),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 14, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.badgeOuverteBg,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text('CITOYEN',
+              style: AppTextStyles.labelCaps.copyWith(
+                  color: AppColors.badgeOuverteText, fontSize: 11)),
+        ),
+        const SizedBox(height: 28),
+
+        // Infos
+        _profileCard(children: [
+          _profileRow(Icons.email_outlined, 'Email', _email),
+          const Divider(height: 0, indent: 16, endIndent: 16),
+          _profileRow(Icons.shield_outlined, 'Rôle', 'Citoyen'),
+          const Divider(height: 0, indent: 16, endIndent: 16),
+          _profileRow(Icons.info_outline, 'Version', 'v1.0.0 — PFE 2025'),
+        ]),
+        const SizedBox(height: 16),
+
+        // Actions rapides
+        _profileCard(children: [
+          ListTile(
+            leading: const Icon(Icons.add_circle_outline,
+                color: AppColors.success),
+            title: Text('Nouvelle réclamation',
+                style: AppTextStyles.body),
+            trailing: const Icon(Icons.chevron_right,
+                color: AppColors.textMuted, size: 20),
+            onTap: () => context.go('/home/nouvelle-reclamation'),
+          ),
+          const Divider(height: 0, indent: 16, endIndent: 16),
+          ListTile(
+            leading: const Icon(Icons.history_outlined,
+                color: AppColors.primaryLight),
+            title: Text('Toutes mes réclamations',
+                style: AppTextStyles.body),
+            trailing: const Icon(Icons.chevron_right,
+                color: AppColors.textMuted, size: 20),
+            onTap: () => context.go('/home/reclamations'),
+          ),
+          const Divider(height: 0, indent: 16, endIndent: 16),
+          ListTile(
+            leading: const Icon(Icons.person_outline,
+                color: AppColors.primaryLight),
+            title: Text('Détail du profil',
+                style: AppTextStyles.body),
+            trailing: const Icon(Icons.chevron_right,
+                color: AppColors.textMuted, size: 20),
+            onTap: () => context.go('/home/profile'),
+          ),
+        ]),
+        const SizedBox(height: 16),
+
+        // Déconnexion
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout,
+                color: AppColors.danger, size: 18),
+            label: const Text('Se déconnecter',
+                style: TextStyle(color: AppColors.danger)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.danger),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text('© 2025 — Projet Master PFE',
+            style: AppTextStyles.labelCaps.copyWith(
+                color: AppColors.textMuted, fontSize: 10)),
+        const SizedBox(height: 20),
+      ]),
     );
   }
 
-  // ── Bottom navigation ─────────────────────────────────────────────────
+  Widget _profileCard({required List<Widget> children}) => Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(AppConstants.radiusCard),
+      border: Border.all(color: AppColors.border),
+    ),
+    child: Column(children: children),
+  );
+
+  Widget _profileRow(IconData icon, String label, String value) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: 16, vertical: 14),
+        child: Row(children: [
+          Icon(icon, size: 18, color: AppColors.textMuted),
+          const SizedBox(width: 12),
+          Text(label,
+              style: AppTextStyles.bodySm.copyWith(
+                  color: AppColors.textMuted)),
+          const Spacer(),
+          Flexible(
+            child: Text(value,
+                style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.textPrimary),
+                textAlign: TextAlign.right,
+                overflow: TextOverflow.ellipsis),
+          ),
+        ]),
+      );
+
+  // ── Bottom navigation 3 tabs ─────────────────────────────────────────
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
-          top: BorderSide(color: AppColors.border, width: 0.8),
-        ),
+            top: BorderSide(color: AppColors.border, width: 0.8)),
       ),
-      child: Row(
-        children: [
-          _navItem(0, Icons.home_outlined, Icons.home, 'Accueil'),
-          _navItem(
-            1,
-            Icons.file_copy_outlined,
-            Icons.file_copy,
-            'Réclamations',
-          ),
-        ],
-      ),
+      child: Row(children: [
+        _navItem(0, Icons.home_outlined,      Icons.home,      'Accueil'),
+        _navItem(1, Icons.file_copy_outlined, Icons.file_copy, 'Réclamations'),
+        _navItem(2, Icons.person_outline,     Icons.person,    'Profil'),
+      ]),
     );
   }
 
@@ -555,9 +630,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               Icon(
                 isActive ? iconFilled : iconOutline,
-                color: isActive
-                    ? AppColors.accent
-                    : AppColors.textMuted,
+                color: isActive ? AppColors.accent : AppColors.textMuted,
                 size: 24,
               ),
               const SizedBox(height: 4),
@@ -578,70 +651,5 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
-  }
-
-  // ── Helpers badges ────────────────────────────────────────────────────
-  Widget _buildBadge(String statut) {
-    final map = {
-      'OUVERTE':  (AppColors.badgeOuverteBg,  AppColors.badgeOuverteText),
-      'EN_COURS': (AppColors.badgeEnCoursBg,  AppColors.badgeEnCoursText),
-      'RESOLUE':  (AppColors.badgeResolieBg,  AppColors.badgeResolieText),
-      'REJETEE':  (AppColors.badgeRejeteBg,   AppColors.badgeRejeteText),
-      'FERMEE':   (AppColors.badgeFermeeBg,   AppColors.badgeFermeeText),
-      'ANNULEE':  (AppColors.badgeAnnuleeBg,  AppColors.badgeAnnuleeText),
-    };
-    final colors = map[statut] ??
-        (AppColors.badgeFermeeBg, AppColors.badgeFermeeText);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: colors.$1,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        statut,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: colors.$2,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPrioriteBadge(String priorite) {
-    final map = {
-      'CRITIQUE': (AppColors.badgeCritiqueBg,  AppColors.badgeCritiqueText),
-      'HAUTE':    (AppColors.badgeHauteBg,      AppColors.badgeHauteText),
-      'MOYENNE':  (AppColors.badgeMoyenneBg,    AppColors.badgeMoyenneText),
-      'BASSE':    (AppColors.badgeBasseBg,      AppColors.badgeBasseText),
-    };
-    final colors = map[priorite] ??
-        (AppColors.badgeFermeeBg, AppColors.badgeFermeeText);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: colors.$1,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        priorite,
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-          color: colors.$2,
-        ),
-      ),
-    );
-  }
-
-  Color _statutColor(String statut) {
-    switch (statut) {
-      case 'OUVERTE':  return AppColors.info;
-      case 'EN_COURS': return AppColors.warning;
-      case 'RESOLUE':  return AppColors.success;
-      case 'REJETEE':  return AppColors.danger;
-      default:         return AppColors.textMuted;
-    }
   }
 }
