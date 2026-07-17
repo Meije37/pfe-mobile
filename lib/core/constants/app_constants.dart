@@ -7,10 +7,17 @@ abstract class AppConstants {
   /// - Windows Desktop  → localhost
   static String get baseUrl {
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8081/api';
+      return 'http://172.20.10.4:8081/api';
     }
     return 'http://localhost:8081/api';
   }
+  // ✅ URL médias selon la plateforme
+static String get mediaBaseUrl {
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    return 'http://10.0.2.2:8081';   // Émulateur Android
+  }
+  return 'http://localhost:8081';     // Windows Desktop
+}
 
   static const String loginEndpoint    = '/auth/login';
   static const String registerEndpoint = '/auth/register';
