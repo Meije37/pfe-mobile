@@ -1,4 +1,4 @@
-
+import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -16,9 +16,10 @@ class ReclamationRemoteDataSource {
     required ReclamationRequestModel model,
     File? imageFile,
   }) async {
-    // Convertir le modèle en JSON string
-    // Le backend attend la partie "reclamation" comme String JSON
-    final reclamationJson = _toJsonString(model.toJson());
+    // Convertir le modèle en JSON string via dart:convert : gère correctement
+    // l'échappement (retours à la ligne, backslash, guillemets, unicode...),
+    // contrairement à un buffer construit à la main.
+    final reclamationJson = jsonEncode(model.toJson());
 
     // Construire le FormData multipart
     final formData = FormData.fromMap({
@@ -50,21 +51,34 @@ class ReclamationRemoteDataSource {
     return response.data as List<dynamic>;
   }
 
-  /// Convertit une Map en JSON string manuellement
-  String _toJsonString(Map<String, dynamic> map) {
-    final buffer = StringBuffer('{');
-    bool first = true;
-    map.forEach((key, value) {
-      if (!first) buffer.write(',');
-      first = false;
-      buffer.write('"$key":');
-      if (value is String) {
-        buffer.write('"${value.replaceAll('"', '\\"')}"');
-      } else {
-        buffer.write('$value');
-      }
-    });
-    buffer.write('}');
-    return buffer.toString();
+  /// GET /api/citoyen/reclamations/publiques
+  /// Liste paginée de TOUTES les réclamations (tous citoyens), avec le
+  /// nombre de votes et si le citoyen connecté a déjà voté.
+  Future<Map<String, dynamic>> getReclamationsPubliques({
+    required int page,
+    required int size,
+    int? categorieId,
+    bool trierParVotes = false,
+  }) async {
+    final response = await _dio.get(
+      AppConstants.citoyenReclamationsPubliques,
+      queryParameters: {
+        'page': page,
+        'size': size,
+        'tri': trierParVotes ? 'votes' : 'recentes',
+        if (categorieId != null) 'categorieId': categorieId,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// POST /api/citoyen/reclamations/{id}/vote
+  /// Bascule le vote (vote si pas encore voté, retire sinon).
+  /// Retourne {nombreVotes, aVote}.
+  Future<Map<String, dynamic>> voter(int reclamationId) async {
+    final response = await _dio.post(
+      '${AppConstants.citoyenReclamationById}/$reclamationId${AppConstants.citoyenVoteSuffixe}',
+    );
+    return response.data as Map<String, dynamic>;
   }
 }

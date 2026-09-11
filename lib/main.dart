@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/utils/app_routes.dart';
+import 'core/utils/global_keys.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +34,7 @@ class CitoyenApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       routerConfig: appRouter,
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
 
       locale: const Locale('fr', 'FR'),
       localizationsDelegates: const [

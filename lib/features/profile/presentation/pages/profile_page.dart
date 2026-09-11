@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/network/notification_socket_service.dart';
+import '../../data/datasources/profil_remote_datasource.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -16,9 +17,14 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   static const _storage = FlutterSecureStorage();
+  final _dataSource = ProfilRemoteDataSource();
+
   String _email    = '';
   String _role     = '';
   String _initials = '';
+  String _nom       = '';
+  String _prenom    = '';
+  String _telephone = '';
 
   @override
   void initState() {
@@ -27,6 +33,8 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _loadUser() async {
+    // Valeurs immédiates depuis le storage (affichage instantané, avant
+    // même la réponse réseau) — écrasées juste après par la vraie donnée.
     final email = await _storage.read(key: AppConstants.emailKey) ?? '';
     final role  = await _storage.read(key: AppConstants.roleKey)  ?? '';
     setState(() {
@@ -36,6 +44,22 @@ class _ProfilePageState extends State<ProfilePage> {
           ? email.substring(0, 2).toUpperCase()
           : '??';
     });
+
+    try {
+      final data = await _dataSource.obtenirProfil();
+      if (!mounted) return;
+      setState(() {
+        _nom       = data['nom'] as String? ?? '';
+        _prenom    = data['prenom'] as String? ?? '';
+        _telephone = data['telephone'] as String? ?? '';
+        _initials  = (_prenom.isNotEmpty && _nom.isNotEmpty)
+            ? '${_prenom[0]}${_nom[0]}'.toUpperCase()
+            : _initials;
+      });
+    } catch (_) {
+      // Silencieux : la page reste utilisable avec juste email/rôle si le
+      // réseau est indisponible au moment de l'ouverture de l'écran.
+    }
   }
 
   Future<void> _logout() async {
@@ -65,6 +89,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (confirm == true) {
+      NotificationSocketService.instance.deconnecter();
       await _storage.deleteAll();
       if (mounted) context.go('/login');
     }
@@ -126,6 +151,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
           // ── Infos ─────────────────────────────────────────────────────
           _card(children: [
+            _row(Icons.badge_outlined, 'Nom complet',
+                (_prenom.isEmpty && _nom.isEmpty) ? '—' : '$_prenom $_nom'),
+            _divider(),
+            _row(Icons.phone_outlined, 'Téléphone',
+                _telephone.isEmpty ? '—' : _telephone),
+            _divider(),
             _row(Icons.email_outlined, 'Email', _email),
             _divider(),
             _row(Icons.shield_outlined, 'Rôle', _role),
@@ -136,6 +167,19 @@ class _ProfilePageState extends State<ProfilePage> {
 
           // ── Actions ────────────────────────────────────────────────────
           _card(children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined,
+                  color: AppColors.primaryLight),
+              title: Text('Modifier mon profil',
+                  style: AppTextStyles.body),
+              trailing: const Icon(Icons.chevron_right,
+                  color: AppColors.textMuted, size: 20),
+              onTap: () async {
+                await context.push('/home/profile/modifier');
+                _loadUser(); // rafraîchit nom/email affichés après retour
+              },
+            ),
+            _divider(),
             ListTile(
               leading: const Icon(Icons.history_outlined,
                   color: AppColors.primaryLight),
@@ -185,11 +229,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _card({required List<Widget> children}) => Container(
     decoration: BoxDecoration(
-      color: Colors.white,
       borderRadius: BorderRadius.circular(AppConstants.radiusCard),
       border: Border.all(color: AppColors.border),
     ),
-    child: Column(children: children),
+    clipBehavior: Clip.antiAlias,
+    child: Material(
+      color: Colors.white,
+      child: Column(children: children),
+    ),
   );
 
   Widget _row(IconData icon, String label, String value) => Padding(

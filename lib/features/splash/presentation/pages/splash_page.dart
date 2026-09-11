@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/network/notification_socket_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/app_routes.dart';
@@ -106,6 +107,7 @@ class _SplashPageState extends State<SplashPage>
         token.isNotEmpty &&
         role == AppConstants.roleCitoyen &&
         _isTokenValid(token)) {
+      NotificationSocketService.instance.connecter();
       context.go(AppRoutes.home);
     } else {
       // Token absent ou expiré → nettoyage + login

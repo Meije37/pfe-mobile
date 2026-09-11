@@ -10,11 +10,15 @@ import '../../../../shared/widgets/statut_badge.dart';
 import '../../../../shared/widgets/priorite_badge.dart';
 import '../../../../shared/widgets/address_widget.dart';
 import '../../../../shared/widgets/reclamation_photo_widget.dart';
-
+import '../widgets/commentaires_section.dart';
+import '../../../../shared/widgets/error_state_widget.dart';
+import '../../../../core/errors/app_failure.dart';
+import '../../../../core/errors/error_mapper.dart';
+AppFailure? _erreurChargement;
 class ReclamationDetailPage extends StatefulWidget {
   const ReclamationDetailPage({super.key, required this.id});
   final int id;
-
+   
   @override
   State<ReclamationDetailPage> createState() => _ReclamationDetailPageState();
 }
@@ -33,6 +37,7 @@ class _ReclamationDetailPageState extends State<ReclamationDetailPage>
   // ── Animation historique ──────────────────────────────────────────────
   late final AnimationController _histoCtrl;
   late final Animation<double>    _histoAnim;
+  
 
   @override
   void initState() {
@@ -56,7 +61,8 @@ void dispose() {
 }
  
   // ── Chargement réclamation ────────────────────────────────────────────
-  Future<void> _load() async {
+Future<void> _load() async {
+    setState(() => _erreurChargement = null);
     try {
       final r = await DioClient.instance.dio.get(
         '${AppConstants.citoyenReclamationById}/${widget.id}',
@@ -65,8 +71,11 @@ void dispose() {
         _rec     = r.data as Map<String, dynamic>;
         _loading = false;
       });
-    } catch (_) {
-      setState(() => _loading = false);
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _erreurChargement = mapError(e);
+      });
     }
   }
 
@@ -180,10 +189,10 @@ void _toggleHisto() {
           ),
         );
       }
-    } catch (_) {
+    }  catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de l\'annulation')),
+          SnackBar(content: Text(mapError(e).message)),
         );
       }
     } finally {
@@ -224,28 +233,21 @@ void _toggleHisto() {
       body: _loading
           ? const LoadingWidget()
           : _rec == null
-              ? _buildError()
+              ? ErrorStateWidget(
+                  failure: _erreurChargement ??
+                      const AppFailure(
+                        type: FailureType.notFound,
+                        message: 'Réclamation introuvable',
+                      ),
+                  onRetry: () {
+                    setState(() => _loading = true);
+                    _load();
+                  },
+                )
               : _buildBody(),
     );
   }
 
-  Widget _buildError() => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.error_outline,
-            size: 48, color: AppColors.textMuted.withOpacity(0.4)),
-        const SizedBox(height: 12),
-        Text('Réclamation introuvable',
-            style: AppTextStyles.h3.copyWith(color: AppColors.textMuted)),
-        const SizedBox(height: 20),
-        ElevatedButton(
-          onPressed: () => context.go('/home/reclamations'),
-          child: const Text('Retour à la liste'),
-        ),
-      ],
-    ),
-  );
 
   Widget _buildBody() {
     final r          = _rec!;
@@ -313,6 +315,10 @@ void _toggleHisto() {
             // ── HISTORIQUE COMPLET DES STATUTS ───────────────────────────
             // ════════════════════════════════════════════════════════════
             _buildHistoriqueSection(),
+            const SizedBox(height: 16),
+
+            // ── Commentaires ──────────────────────────────────────────────
+            CommentairesSection(reclamationId: widget.id),
             const SizedBox(height: 24),
 
             // ── Actions ───────────────────────────────────────────────────

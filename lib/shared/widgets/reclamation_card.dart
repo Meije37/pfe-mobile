@@ -98,25 +98,29 @@ class ReclamationCard extends StatelessWidget {
 
               // ── Ligne 3 : catégorie + priorité + date ────────────
               Row(children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(6),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(catNom,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.labelCaps.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 10,
+                        )),
                   ),
-                  child: Text(catNom,
-                      style: AppTextStyles.labelCaps.copyWith(
-                        color: AppColors.textSecondary,
-                        fontSize: 10,
-                      )),
                 ),
                 const SizedBox(width: 6),
                 PrioriteBadge(
                   priorite: priorite,
                   mode: PrioriteMode.citoyen,
                 ),
-                const Spacer(),
+                const SizedBox(width: 6),
                 Text(date,
                     style: AppTextStyles.labelCaps.copyWith(
                         fontSize: 10)),

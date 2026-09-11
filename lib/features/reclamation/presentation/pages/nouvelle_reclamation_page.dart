@@ -14,6 +14,7 @@ import '../../../../../core/theme/app_text_styles.dart';
 import '../../data/datasources/reclamation_remote_datasource.dart';
 import '../../data/models/reclamation_request_model.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import '../../../../core/errors/error_mapper.dart';
 
 class NouvelleReclamationPage extends StatefulWidget {
   const NouvelleReclamationPage({super.key});
@@ -58,12 +59,14 @@ class _NouvelleReclamationPageState extends State<NouvelleReclamationPage> {
     _villeCtrl.dispose();
     super.dispose();
   }
-
-  Future<void> _loadCategories() async {
+Future<void> _loadCategories() async {
     try {
       final cats = await _datasource.getCategories();
       setState(() { _categories = cats; _loadingCats = false; });
-    } catch (_) { setState(() => _loadingCats = false); }
+    } catch (e) {
+      setState(() => _loadingCats = false);
+      _snack('Catégories indisponibles : ${mapError(e).message}', err: true);
+    }
   }
 
   Future<void> _getMyLocation() async {
@@ -142,8 +145,8 @@ Future<void> _pickImage(ImageSource src) async {
       await _datasource.deposerReclamation(model: m, imageFile: _imageFile);
       if (!mounted) return;
       _dialogSucces();
-    } catch (e) {
-      _snack('Erreur : $e', err: true);
+    }  catch (e) {
+      _snack(mapError(e).message, err: true);
     } finally { if (mounted) setState(() => _loading = false); }
   }
 

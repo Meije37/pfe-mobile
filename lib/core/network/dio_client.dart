@@ -1,6 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/app_constants.dart';
+import '../utils/app_routes.dart';
+import '../utils/global_keys.dart';
+import 'notification_socket_service.dart';
 
 class DioClient {
   DioClient._();
@@ -44,7 +48,22 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    // 401 → token expiré, on pourrait forcer le logout ici
+    if (err.response?.statusCode == 401) {
+      _forcerDeconnexion();
+    }
     handler.next(err);
+  }
+
+  /// Purge la session et redirige vers /login. Fire-and-forget
+  /// volontairement : l'appel qui a déclenché le 401 doit quand même
+  /// remonter son erreur normalement à l'écran (via handler.next ci-dessus),
+  /// ce nettoyage se fait en parallèle, pas en bloquant la réponse.
+  Future<void> _forcerDeconnexion() async {
+    NotificationSocketService.instance.deconnecter();
+    await _storage.deleteAll();
+    rootScaffoldMessengerKey.currentState?.showSnackBar(
+      const SnackBar(content: Text('Votre session a expiré. Veuillez vous reconnecter.')),
+    );
+    appRouter.go(AppRoutes.login);
   }
 }

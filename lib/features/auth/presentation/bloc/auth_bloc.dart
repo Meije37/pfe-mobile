@@ -3,6 +3,7 @@ import '../../domain/usecases/login_usecase.dart';
 import '../../domain/usecases/register_usecase.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
+import '../../../../core/network/notification_socket_service.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final LoginUseCase    _loginUseCase;
@@ -18,21 +19,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<RegisterSubmitted>(_onRegister);
   }
 
-  Future<void> _onLogin(
-    LoginSubmitted event,
-    Emitter<AuthState> emit,
-  ) async {
-    emit(AuthLoading());
-    final result = await _loginUseCase(
-      email: event.email,
-      password: event.password,
-    );
-    result.fold(
-      (error) => emit(AuthFailure(error)),
-      (user)  => emit(AuthLoginSuccess(user)),
-    );
-  }
-
+Future<void> _onLogin(
+  LoginSubmitted event,
+  Emitter<AuthState> emit,
+) async {
+  emit(AuthLoading());
+  final result = await _loginUseCase(
+    email: event.email,
+    password: event.password,
+  );
+  result.fold(
+    (error) => emit(AuthFailure(error)),
+    (user) {
+      NotificationSocketService.instance.connecter();
+      emit(AuthLoginSuccess(user));
+    },
+  );
+}
   Future<void> _onRegister(
     RegisterSubmitted event,
     Emitter<AuthState> emit,

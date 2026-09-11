@@ -6,8 +6,13 @@ import '../../../../core/network/dio_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../shared/widgets/empty_state_widget.dart';
+import '../../../../shared/widgets/error_state_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../../../shared/widgets/reclamation_card.dart';
+import '../../../../core/errors/error_mapper.dart';
+import '../../../../core/errors/app_failure.dart';
+import '../../../../core/network/offline_cache_service.dart';
+import '../../../../core/widgets/offline_banner.dart';
 
 class ReclamationsListPage extends StatefulWidget {
   const ReclamationsListPage({super.key});
@@ -19,9 +24,26 @@ class ReclamationsListPage extends StatefulWidget {
 class _ReclamationsListPageState extends State<ReclamationsListPage> {
 
   // ── Données ──────────────────────────────────────────────────────────
-  List<dynamic> _all      = []; // toutes les réclamations
-  List<dynamic> _filtered = []; // après filtres + recherche
+  List<dynamic> _all      = []; // réclamations chargées jusqu'ici (pages cumulées)
+  List<dynamic> _filtered = []; // après filtres + recherche, sur les pages chargées
   bool _loading = true;
+  AppFailure? _erreurChargement;
+
+  // ── Pagination (scroll infini) ──────────────────────────────────────
+  // Le backend renvoie les réclamations par pages de 20 (les plus récentes
+  // d'abord). On charge la page suivante automatiquement quand l'utilisateur
+  // approche du bas de la liste, plutôt que de tout charger d'un coup.
+  static const int _taillePage = 20;
+  int  _pageActuelle = 0;
+  bool _derniereePage = false;
+  bool _chargementPageSuivante = false;
+  final _scrollCtrl = ScrollController();
+
+  // ── Hors-ligne ────────────────────────────────────────────────────────
+  // Cache uniquement la 1ère page : au-delà, le scroll infini nécessite
+  // le réseau (compromis assumé, voir explication donnée à l'utilisateur).
+  bool _horsLigne = false;
+  DateTime? _derniereSyncOK;
 
   // ── Filtres ───────────────────────────────────────────────────────────
   String _filtreStatut = '';
@@ -48,6 +70,16 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
     _load();
     // Écoute les changements de texte en temps réel
     _searchCtrl.addListener(_appliquerFiltres);
+    // Déclenche le chargement de la page suivante en approchant du bas
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollCtrl.hasClients) return;
+    final seuil = _scrollCtrl.position.maxScrollExtent - 300;
+    if (_scrollCtrl.position.pixels >= seuil) {
+      _loadMore();
+    }
   }
 
   @override
@@ -55,22 +87,82 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
     _searchCtrl.removeListener(_appliquerFiltres);
     _searchCtrl.dispose();
     _searchFocus.dispose();
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
-  // ── Chargement API ───────────────────────────────────────────────────
+  // ── Chargement API : première page (ou rafraîchissement complet) ───────
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _erreurChargement = null;
+      _pageActuelle = 0;
+      _derniereePage = false;
+    });
     try {
-      final r = await DioClient.instance.dio
-          .get(AppConstants.citoyenReclamations);
+      final r = await DioClient.instance.dio.get(
+        AppConstants.citoyenReclamations,
+        queryParameters: {'page': 0, 'size': _taillePage},
+      );
+      final data = r.data as Map<String, dynamic>;
+      // On ne cache que le contenu + l'indicateur "dernière page" : pas
+      // besoin du reste (infos de pagination Spring non utilisées ici).
+      await OfflineCacheService.instance.save(
+        CacheKeys.reclamationsPremierePage,
+        {'content': data['content'], 'last': data['last']},
+      );
       setState(() {
-        _all     = r.data as List<dynamic>;
+        _all           = data['content'] as List<dynamic>;
+        _derniereePage = data['last'] as bool? ?? true;
+        _loading       = false;
+        _horsLigne     = false;
+      });
+      _appliquerFiltres();
+    } catch (e) {
+      // Pas de réseau : on retombe sur la dernière page 0 connue en cache
+      // (les pages suivantes ne sont pas disponibles hors-ligne).
+      final cached = await OfflineCacheService.instance
+          .load(CacheKeys.reclamationsPremierePage);
+      setState(() {
         _loading = false;
+        if (cached != null) {
+          _all            = cached.data['content'] as List<dynamic>;
+          _derniereePage  = true; // pas de scroll infini possible hors-ligne
+          _horsLigne      = true;
+          _derniereSyncOK = cached.syncedAt;
+          _erreurChargement = null;
+        } else {
+          // Rien en cache non plus : on garde le message d'erreur habituel.
+          _erreurChargement = mapError(e);
+        }
+      });
+      _appliquerFiltres();
+    }
+  }
+
+  // ── Chargement de la page suivante (scroll infini) ──────────────────
+  Future<void> _loadMore() async {
+    if (_derniereePage || _chargementPageSuivante || _loading) return;
+    setState(() => _chargementPageSuivante = true);
+    try {
+      final pageSuivante = _pageActuelle + 1;
+      final r = await DioClient.instance.dio.get(
+        AppConstants.citoyenReclamations,
+        queryParameters: {'page': pageSuivante, 'size': _taillePage},
+      );
+      final data = r.data as Map<String, dynamic>;
+      setState(() {
+        _all.addAll(data['content'] as List<dynamic>);
+        _pageActuelle  = pageSuivante;
+        _derniereePage = data['last'] as bool? ?? true;
+        _chargementPageSuivante = false;
       });
       _appliquerFiltres();
     } catch (_) {
-      setState(() => _loading = false);
+      // Échec silencieux : l'utilisateur peut réessayer en re-scrollant,
+      // on ne bloque pas la liste déjà chargée pour ça.
+      setState(() => _chargementPageSuivante = false);
     }
   }
 
@@ -150,6 +242,8 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
         // ── Filtres statut ────────────────────────────────────────────
         _buildFiltresStatut(),
 
+        if (_horsLigne) OfflineBanner(syncedAt: _derniereSyncOK),
+
         // ── Compteur résultats ────────────────────────────────────────
         if (!_loading)
           _buildCompteur(),
@@ -184,6 +278,12 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
           ),
           onPressed: _toggleSearch,
           tooltip: 'Rechercher',
+        ),
+        // Bouton réclamations publiques (voir + soutenir celles des autres)
+        IconButton(
+          icon: const Icon(Icons.public, color: Colors.white),
+          onPressed: () => context.go('/home/reclamations-publiques'),
+          tooltip: 'Réclamations publiques',
         ),
         // Bouton nouvelle réclamation
         IconButton(
@@ -423,6 +523,10 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
   Widget _buildListe() {
     if (_loading) return const LoadingWidget();
 
+    if (_erreurChargement != null && _all.isEmpty) {
+      return ErrorStateWidget(failure: _erreurChargement!, onRetry: _load);
+    }
+
     if (_filtered.isEmpty) {
       // Empty state selon le contexte
       if (_recherche.isNotEmpty) {
@@ -461,9 +565,22 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
       onRefresh: _load,
       color: AppColors.accent,
       child: ListView.builder(
+        controller: _scrollCtrl,
         padding: const EdgeInsets.all(AppConstants.paddingPage),
-        itemCount: _filtered.length,
+        // +1 pour l'indicateur "chargement de la page suivante" en bas
+        itemCount: _filtered.length + (_chargementPageSuivante ? 1 : 0),
         itemBuilder: (_, i) {
+          if (i >= _filtered.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 22, height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+            );
+          }
           final rec = _filtered[i] as Map<String, dynamic>;
           return ReclamationCard(
             reclamation: rec,

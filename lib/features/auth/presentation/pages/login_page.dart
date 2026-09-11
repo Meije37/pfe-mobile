@@ -185,7 +185,7 @@ class _LoginViewState extends State<_LoginView> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {},
+                          onPressed: () => context.push(AppRoutes.forgotPassword),
                           child: Text(
                             'Mot de passe oublié ?',
                             style: AppTextStyles.bodySm.copyWith(

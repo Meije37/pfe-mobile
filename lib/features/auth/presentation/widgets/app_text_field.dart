@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
@@ -14,6 +15,7 @@ class AppTextField extends StatefulWidget {
     this.validator,
     this.textInputAction = TextInputAction.next,
     this.onFieldSubmitted,
+    this.inputFormatters,
   });
 
   final String label;
@@ -25,6 +27,7 @@ class AppTextField extends StatefulWidget {
   final String? Function(String?)? validator;
   final TextInputAction textInputAction;
   final void Function(String)? onFieldSubmitted;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -57,6 +60,7 @@ class _AppTextFieldState extends State<AppTextField> {
           keyboardType: widget.keyboardType,
           textInputAction: widget.textInputAction,
           onFieldSubmitted: widget.onFieldSubmitted,
+          inputFormatters: widget.inputFormatters,
           validator: widget.validator,
           style: AppTextStyles.body.copyWith(color: Colors.white),
           decoration: InputDecoration(

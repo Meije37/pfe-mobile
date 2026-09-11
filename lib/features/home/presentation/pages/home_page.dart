@@ -9,6 +9,9 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../shared/widgets/empty_state_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../../../shared/widgets/reclamation_card.dart';
+import '../../../../core/network/offline_cache_service.dart';
+import '../../../../core/widgets/offline_banner.dart';
+import '../../../notification/presentation/widgets/notification_bell_icon.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -27,6 +30,11 @@ class _HomePageState extends State<HomePage> {
   bool _loadingStats = true;
   bool _loadingRecs  = true;
   int  _selectedTab  = 0;
+
+  // ── Hors-ligne ────────────────────────────────────────────────────────
+  // true si les données affichées viennent du cache local (pas du réseau).
+  bool _horsLigne = false;
+  DateTime? _derniereSyncOK;
 
   @override
   void initState() {
@@ -49,26 +57,54 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadStats() async {
     try {
       final r = await DioClient.instance.dio.get(AppConstants.citoyenStats);
+      final data = r.data as Map<String, dynamic>;
+      await OfflineCacheService.instance.save(CacheKeys.statsCitoyen, data);
       setState(() {
-        _stats        = r.data as Map<String, dynamic>;
+        _stats        = data;
         _loadingStats = false;
+        _horsLigne    = false;
       });
     } catch (_) {
-      setState(() => _loadingStats = false);
+      // Pas de réseau (ou serveur injoignable) : on retombe sur la dernière
+      // version connue en cache, si elle existe.
+      final cached = await OfflineCacheService.instance.load(CacheKeys.statsCitoyen);
+      setState(() {
+        _loadingStats = false;
+        if (cached != null) {
+          _stats         = cached.data;
+          _horsLigne     = true;
+          _derniereSyncOK = cached.syncedAt;
+        }
+      });
     }
   }
 
   Future<void> _loadReclamations() async {
     try {
-      final r = await DioClient.instance.dio
-          .get(AppConstants.citoyenReclamations);
-      final list = r.data as List<dynamic>;
+      final r = await DioClient.instance.dio.get(
+        AppConstants.citoyenReclamations,
+        queryParameters: {'page': 0, 'size': 5},
+      );
+      final data = r.data as Map<String, dynamic>;
+      final list = data['content'] as List<dynamic>;
+      await OfflineCacheService.instance
+          .save(CacheKeys.derniereReclamations, {'content': list});
       setState(() {
-        _reclamations = list.take(5).toList();
+        _reclamations = list;
         _loadingRecs  = false;
+        _horsLigne    = false;
       });
     } catch (_) {
-      setState(() => _loadingRecs = false);
+      final cached = await OfflineCacheService.instance
+          .load(CacheKeys.derniereReclamations);
+      setState(() {
+        _loadingRecs = false;
+        if (cached != null) {
+          _reclamations   = cached.data['content'] as List<dynamic>;
+          _horsLigne      = true;
+          _derniereSyncOK ??= cached.syncedAt;
+        }
+      });
     }
   }
 
@@ -109,6 +145,7 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: AppColors.background,
       body: Column(children: [
         _buildHeader(),
+        if (_horsLigne) OfflineBanner(syncedAt: _derniereSyncOK),
         Expanded(
           child: IndexedStack(
             index: _selectedTab,
@@ -168,12 +205,8 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
 
-        // Notifications (décoratif)
-        // IconButton(
-        //   onPressed: () {},
-        //   icon: const Icon(Icons.notifications_none,
-        //       color: AppColors.sidebarText, size: 22),
-        // ),
+        // Notifications
+        const NotificationBellIcon(),
 
         // Déconnexion
         IconButton(
@@ -568,11 +601,19 @@ class _HomePageState extends State<HomePage> {
 
   Widget _profileCard({required List<Widget> children}) => Container(
     decoration: BoxDecoration(
-      color: Colors.white,
       borderRadius: BorderRadius.circular(AppConstants.radiusCard),
       border: Border.all(color: AppColors.border),
     ),
-    child: Column(children: children),
+    clipBehavior: Clip.antiAlias,
+    // Material (et non une simple couleur sur le Container) : c'est lui qui
+    // peint le fond ET sert de "toile" aux effets d'encre des ListTile
+    // enfants. Sans ça, les splashs au clic restent invisibles (le
+    // Container/DecoratedBox les masque, comme le signalait le warning
+    // Flutter "ListTile background color or ink splashes may be invisible").
+    child: Material(
+      color: Colors.white,
+      child: Column(children: children),
+    ),
   );
 
   Widget _profileRow(IconData icon, String label, String value) =>

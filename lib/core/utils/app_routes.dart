@@ -7,18 +7,23 @@ import '../constants/app_constants.dart';
 import '../../features/splash/presentation/pages/splash_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
+import '../../features/auth/presentation/pages/forgot_password_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/reclamation/presentation/pages/nouvelle_reclamation_page.dart';
 import '../../features/reclamation/presentation/pages/reclamations_list_page.dart';
+import '../../features/reclamation/presentation/pages/reclamations_publiques_page.dart';
 import '../../features/reclamation/presentation/pages/reclamation_detail_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
+import '../../features/profile/presentation/pages/edit_profile_page.dart';
 
 abstract class AppRoutes {
   static const String splash           = '/';
   static const String login            = '/login';
   static const String register         = '/register';
+  static const String forgotPassword   = '/forgot-password';
   static const String home             = '/home';
   static const String reclamations     = '/home/reclamations';
+  static const String reclamationsPubliques = '/home/reclamations-publiques';
   static const String reclamationDetail= '/home/reclamations/:id';
   static const String nouvelleRec      = '/home/nouvelle-reclamation';
   static const String profile          = '/home/profile';
@@ -35,7 +40,8 @@ final GoRouter appRouter = GoRouter(
 
     final isOnSplash = state.matchedLocation == AppRoutes.splash;
     final isOnAuth   = state.matchedLocation == AppRoutes.login ||
-                       state.matchedLocation == AppRoutes.register;
+                       state.matchedLocation == AppRoutes.register ||
+                       state.matchedLocation == AppRoutes.forgotPassword;
     final isOnHome   = state.matchedLocation.startsWith('/home');
 
     if (token == null && !isOnAuth && !isOnSplash) return AppRoutes.login;
@@ -56,6 +62,8 @@ final GoRouter appRouter = GoRouter(
         builder: (_, __) => const LoginPage()),
     GoRoute(path: AppRoutes.register,
         builder: (_, __) => const RegisterPage()),
+    GoRoute(path: AppRoutes.forgotPassword,
+        builder: (_, __) => const ForgotPasswordPage()),
 
     GoRoute(
       path: AppRoutes.home,
@@ -74,12 +82,22 @@ final GoRouter appRouter = GoRouter(
           ],
         ),
         GoRoute(
+          path: 'reclamations-publiques',
+          builder: (_, __) => const ReclamationsPubliquesPage(),
+        ),
+        GoRoute(
           path: 'nouvelle-reclamation',
           builder: (_, __) => const NouvelleReclamationPage(),
         ),
         GoRoute(
           path: 'profile',
           builder: (_, __) => const ProfilePage(),
+          routes: [
+            GoRoute(
+              path: 'modifier',
+              builder: (_, __) => const EditProfilePage(),
+            ),
+          ],
         ),
       ],
     ),
