@@ -98,7 +98,7 @@ class _AddressWidgetState extends State<AddressWidget> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.showIcon) ...[
-          Icon(Icons.location_on,
+          const Icon(Icons.location_on,
               size: 13, color: AppColors.textMuted),
           const SizedBox(width: 4),
         ],
@@ -131,7 +131,7 @@ class _AddressWidgetState extends State<AddressWidget> {
         children: [
           // Titre section
           Row(children: [
-            Icon(Icons.location_on_outlined,
+            const Icon(Icons.location_on_outlined,
                 size: 16, color: AppColors.textMuted),
             const SizedBox(width: 6),
             Text('LOCALISATION',
@@ -201,7 +201,7 @@ class _InlineSkeleton extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.location_on, size: 13, color: AppColors.textMuted),
+        const Icon(Icons.location_on, size: 13, color: AppColors.textMuted),
         const SizedBox(width: 4),
         Container(
           width: 100, height: 10,

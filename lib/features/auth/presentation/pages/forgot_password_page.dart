@@ -4,10 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/brand.dart';
 import '../../data/datasources/password_reset_remote_datasource.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_text_field.dart';
+import '../widgets/auth_layout.dart';
 
 enum _Etape { email, code, nouveauMotDePasse, succes }
 
@@ -97,68 +98,59 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() { _erreur = null; _etape = _Etape.nouveauMotDePasse; });
   }
 
+  void _retour() {
+    if (_etape == _Etape.email || _etape == _Etape.succes) {
+      context.pop();
+      return;
+    }
+    setState(() {
+      _erreur = null;
+      _etape = _etape == _Etape.nouveauMotDePasse ? _Etape.code : _Etape.email;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.primaryDark,
-      body: SafeArea(
-        child: Stack(
+    final (titre, sousTitre) = switch (_etape) {
+      _Etape.email => (
+          'Mot de passe oublié',
+          'Saisissez l\'adresse e-mail de votre compte : nous vous enverrons un code de vérification à 6 chiffres.',
+        ),
+      _Etape.code => (
+          'Code de vérification',
+          'Un code à 6 chiffres a été envoyé à ${_emailCtrl.text.trim()}.',
+        ),
+      _Etape.nouveauMotDePasse => (
+          'Nouveau mot de passe',
+          'Choisissez un nouveau mot de passe pour votre compte.',
+        ),
+      _Etape.succes => (
+          'Mot de passe modifié',
+          'Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
+        ),
+    };
+
+    return PopScope(
+      canPop: _etape == _Etape.email || _etape == _Etape.succes,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _retour();
+      },
+      child: AuthLayout(
+        showBack: _etape != _Etape.succes,
+        onBack: _retour,
+        compactBrand: true,
+        title: titre,
+        subtitle: sousTitre,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Positioned(
-              top: -60, right: -60,
-              child: Container(
-                width: 200, height: 200,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary.withOpacity(0.4),
-                ),
-              ),
-            ),
-            SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height -
-                             MediaQuery.of(context).padding.top - 40,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    IconButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () => _etape == _Etape.email
-                          ? context.pop()
-                          : setState(() {
-                              _erreur = null;
-                              _etape = _etape == _Etape.nouveauMotDePasse
-                                  ? _Etape.code
-                                  : _Etape.email;
-                            }),
-                      icon: const Icon(Icons.arrow_back_ios_new,
-                          color: Colors.white, size: 18),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: 52, height: 52,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.accent.withOpacity(0.15),
-                        border: Border.all(
-                          color: AppColors.accent.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.lock_reset_rounded,
-                        color: AppColors.accent, size: 26,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildEtape(),
-                  ],
-                ),
-              ),
+            if (_etape != _Etape.succes) ...[
+              _Progression(etape: _etape.index),
+              const SizedBox(height: 20),
+            ],
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: KeyedSubtree(key: ValueKey(_etape), child: _buildEtape()),
             ),
           ],
         ),
@@ -183,33 +175,27 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Form(
       key: _emailFormKey,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Réinitialiser votre mot de passe',
-              style: AppTextStyles.h2.copyWith(color: Colors.white)),
-          const SizedBox(height: 6),
-          Text(
-            'Entrez votre email, nous vous enverrons un code de vérification à 6 chiffres.',
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.sidebarText),
-          ),
-          const SizedBox(height: 24),
           AppTextField(
-            label: 'Email',
+            label: 'Adresse e-mail',
             controller: _emailCtrl,
+            hint: 'nom@exemple.mr',
             keyboardType: TextInputType.emailAddress,
-            prefixIcon: Icons.email_outlined,
+            prefixIcon: Icons.mail_outline_rounded,
             textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.email],
             onFieldSubmitted: (_) => _demanderCode(),
             validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Email requis';
-              if (!v.contains('@')) return 'Email invalide';
+              if (v == null || v.trim().isEmpty) return 'Saisissez votre adresse e-mail';
+              if (!v.contains('@')) return 'Adresse e-mail invalide';
               return null;
             },
           ),
           if (_erreur != null) _buildErreur(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           AppButton(
-            label: 'Envoyer le code',
+            label: 'Recevoir le code',
             loading: _chargement,
             onPressed: _demanderCode,
           ),
@@ -222,22 +208,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Form(
       key: _codeFormKey,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Code de vérification',
-              style: AppTextStyles.h2.copyWith(color: Colors.white)),
-          const SizedBox(height: 6),
-          Text(
-            'Un code à 6 chiffres a été envoyé à ${_emailCtrl.text.trim()}.',
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.sidebarText),
-          ),
-          const SizedBox(height: 24),
           AppTextField(
             label: 'Code à 6 chiffres',
             controller: _codeCtrl,
+            hint: '••••••',
             keyboardType: TextInputType.number,
             prefixIcon: Icons.pin_outlined,
             textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.oneTimeCode],
             onFieldSubmitted: (_) => _validerCodeEtContinuer(),
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
@@ -251,16 +231,14 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             },
           ),
           if (_erreur != null) _buildErreur(),
-          const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: _chargement ? null : _demanderCode,
-              child: Text('Renvoyer le code',
-                  style: AppTextStyles.bodySm.copyWith(color: AppColors.accent)),
+              child: const Text('Renvoyer le code'),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           AppButton(
             label: 'Continuer',
             onPressed: _validerCodeEtContinuer,
@@ -274,21 +252,15 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     return Form(
       key: _pwdFormKey,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Nouveau mot de passe',
-              style: AppTextStyles.h2.copyWith(color: Colors.white)),
-          const SizedBox(height: 6),
-          Text(
-            'Choisissez un nouveau mot de passe pour votre compte.',
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.sidebarText),
-          ),
-          const SizedBox(height: 24),
           AppTextField(
             label: 'Nouveau mot de passe',
             controller: _pwdCtrl,
+            helper: 'Au moins 6 caractères',
             obscure: true,
-            prefixIcon: Icons.lock_outline,
+            prefixIcon: Icons.lock_outline_rounded,
+            autofillHints: const [AutofillHints.newPassword],
             validator: (v) {
               if (v == null || v.length < 6) {
                 return 'Au moins 6 caractères';
@@ -296,21 +268,20 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               return null;
             },
           ),
-          const SizedBox(height: 16),
           AppTextField(
             label: 'Confirmer le mot de passe',
             controller: _pwdConfirmCtrl,
             obscure: true,
-            prefixIcon: Icons.lock_outline,
+            prefixIcon: Icons.lock_outline_rounded,
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => _reinitialiser(),
             validator: (v) =>
-                (v == null || v.isEmpty) ? 'Confirmation requise' : null,
+                (v == null || v.isEmpty) ? 'Confirmez le mot de passe' : null,
           ),
           if (_erreur != null) _buildErreur(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
           AppButton(
-            label: 'Réinitialiser le mot de passe',
+            label: 'Enregistrer le mot de passe',
             loading: _chargement,
             onPressed: _reinitialiser,
           ),
@@ -320,43 +291,73 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   }
 
   Widget _buildEtapeSucces() {
-    return SizedBox(
-      width: double.infinity,
-      child: Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 20),
-        Container(
-          width: 72, height: 72,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.success.withOpacity(0.1),
-          ),
-          child: const Icon(Icons.check_circle_outline,
-              color: AppColors.success, size: 40),
+        const InfoBanner(
+          tone: InfoTone.success,
+          title: 'C\'est fait',
+          message: 'Votre mot de passe a bien été modifié.',
         ),
-        const SizedBox(height: 20),
-        Text('Mot de passe réinitialisé',
-            style: AppTextStyles.h2.copyWith(color: Colors.white)),
-        const SizedBox(height: 8),
-        Text(
-          'Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
-          textAlign: TextAlign.center,
-          style: AppTextStyles.bodySm.copyWith(color: AppColors.sidebarText),
-        ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 24),
         AppButton(
           label: 'Retour à la connexion',
           onPressed: () => context.go('/login'),
         ),
       ],
-      ),
     );
   }
 
   Widget _buildErreur() => Padding(
-    padding: const EdgeInsets.only(top: 12),
-    child: Text(_erreur!,
-        style: AppTextStyles.bodySm.copyWith(color: AppColors.danger)),
-  );
+        padding: const EdgeInsets.only(bottom: 12),
+        child: InfoBanner(tone: InfoTone.danger, message: _erreur!),
+      );
+}
+
+/// Barre de progression en 3 segments (e-mail · code · mot de passe).
+class _Progression extends StatelessWidget {
+  const _Progression({required this.etape});
+
+  final int etape;
+
+  @override
+  Widget build(BuildContext context) {
+    const libelles = ['E-mail', 'Code', 'Mot de passe'];
+    return Semantics(
+      label: 'Étape ${etape + 1} sur 3',
+      excludeSemantics: true,
+      child: Row(
+        children: [
+          for (var i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 6),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: i <= etape ? AppColors.primaryLight : AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    libelles[i],
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: i == etape ? FontWeight.w700 : FontWeight.w500,
+                      color: i == etape
+                          ? AppColors.textPrimary
+                          : (i < etape ? AppColors.primaryLight : AppColors.textMuted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

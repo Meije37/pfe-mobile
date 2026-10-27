@@ -37,9 +37,12 @@ class LocationMapWidget extends StatelessWidget {
   /// pour éviter les conflits de gestes tactiles.
   final bool interactive;
 
+  // OpenStreetMap standard : gratuit, sans clé API, pas de watermark.
+  // (CartoDB/basemaps.cartocdn.com demande désormais une clé pour son
+  // style "voyager", d'où le filigrane "API KEY REQUIRED" précédent.)
   static const String _tileUrl =
-      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-  static const List<String> _subdomains = ['a', 'b', 'c', 'd'];
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const List<String> _subdomains = ['a', 'b', 'c'];
 
   LatLng get _position => LatLng(latitude, longitude);
 
@@ -92,12 +95,12 @@ class LocationMapWidget extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.55),
+                  color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
+                  children: [
                     Icon(Icons.fullscreen, size: 14, color: Colors.white),
                     SizedBox(width: 4),
                     Text('Agrandir',
@@ -173,19 +176,19 @@ class _FullScreenMapPageState extends State<_FullScreenMapPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.primaryDark,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          tooltip: 'Fermer',
+          icon: const Icon(Icons.close_rounded),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Localisation',
-            style: AppTextStyles.h3.copyWith(color: Colors.white)),
+        title: const Text('Localisation'),
         actions: [
-          IconButton(
-            tooltip: 'Ouvrir dans Google Maps',
-            icon: const Icon(Icons.map_outlined, color: Colors.white),
+          TextButton.icon(
             onPressed: _ouvrirGoogleMaps,
+            icon: const Icon(Icons.directions_outlined, size: 18),
+            label: const Text('Itinéraire'),
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Stack(
@@ -247,7 +250,7 @@ class _FullScreenMapPageState extends State<_FullScreenMapPage> {
                   borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),

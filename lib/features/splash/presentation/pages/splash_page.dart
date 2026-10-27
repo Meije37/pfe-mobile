@@ -8,6 +8,7 @@ import '../../../../core/network/notification_socket_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/app_routes.dart';
+import '../../../../core/widgets/brand.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -43,14 +44,14 @@ class _SplashPageState extends State<SplashPage>
       parent: _ctrl,
       curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
     );
-    _scaleAnim = Tween<double>(begin: 0.6, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(
         parent: _ctrl,
-        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
       ),
     );
     _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.5),
+      begin: const Offset(0, 0.2),
       end: Offset.zero,
     ).animate(
       CurvedAnimation(
@@ -110,9 +111,9 @@ class _SplashPageState extends State<SplashPage>
       NotificationSocketService.instance.connecter();
       context.go(AppRoutes.home);
     } else {
-      // Token absent ou expiré → nettoyage + login
+      // Token absent ou expiré → nettoyage + accueil public
       await _storage.deleteAll();
-      if (mounted) context.go(AppRoutes.login);
+      if (mounted) context.go(AppRoutes.accueilPublic);
     }
   }
 
@@ -124,131 +125,82 @@ class _SplashPageState extends State<SplashPage>
 
   @override
   Widget build(BuildContext context) {
+    final top = MediaQuery.paddingOf(context).top;
     return Scaffold(
-      backgroundColor: AppColors.primaryDark,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned(
-              top: -80, right: -80,
-              child: _DecorativeCircle(
-                size: 260,
-                color: AppColors.primary.withOpacity(0.35),
-              ),
-            ),
-            Positioned(
-              bottom: -60, left: -60,
-              child: _DecorativeCircle(
-                size: 200,
-                color: AppColors.accent.withOpacity(0.08),
-              ),
-            ),
-            Center(
+      backgroundColor: AppColors.cardBg,
+      body: Column(
+        children: [
+          SizedBox(height: top),
+          const NationalStripe(),
+          Expanded(
+            child: Center(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   FadeTransition(
                     opacity: _fadeAnim,
                     child: ScaleTransition(
                       scale: _scaleAnim,
-                      child: const _AppLogo(),
+                      child: Image.asset(
+                        AppBrand.logo,
+                        width: 160,
+                        height: 160,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const BrandEmblem(size: 96),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
                   SlideTransition(
                     position: _slideAnim,
                     child: FadeTransition(
                       opacity: _fadeAnim,
-                      child: const _AppTitle(),
+                      child: Column(
+                        children: [
+                          const Text(
+                            AppBrand.nom,
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.5,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            AppBrand.nomArabe,
+                            style: AppTextStyles.arabic(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primaryLight,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            AppBrand.slogan,
+                            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 64),
+                  const SizedBox(height: 48),
                   AnimatedBuilder(
                     animation: _progressAnim,
-                    builder: (_, __) =>
-                        _ProgressBar(value: _progressAnim.value),
+                    builder: (_, __) => _ProgressBar(value: _progressAnim.value),
                   ),
                 ],
               ),
             ),
-            const Positioned(
-              bottom: 24, left: 0, right: 0,
-              child: _Footer(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AppLogo extends StatelessWidget {
-  const _AppLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 110, height: 110,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.accent.withOpacity(0.12),
-        border: Border.all(
-          color: AppColors.accent.withOpacity(0.35), width: 1.5,
-        ),
-      ),
-      child: Center(
-        child: Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.accent.withOpacity(0.2),
           ),
-          child: const Icon(
-            Icons.account_balance_rounded,
-            size: 42, color: AppColors.accent,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AppTitle extends StatelessWidget {
-  const _AppTitle();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          'Plateforme Citoyenne',
-          style: AppTextStyles.h2.copyWith(color: Colors.white, height: 1.2),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'République Islamique de Mauritanie',
-          style: AppTextStyles.bodySm.copyWith(color: AppColors.sidebarText),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.accent.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: AppColors.accent.withOpacity(0.25), width: 0.8,
+          Padding(
+            padding: EdgeInsets.only(bottom: 20 + MediaQuery.paddingOf(context).bottom),
+            child: const Text(
+              'Version 1.0.0',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
           ),
-          child: Text(
-            'Gestion des réclamations',
-            style: AppTextStyles.labelCaps.copyWith(
-              color: AppColors.accent, fontSize: 11,
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -259,67 +211,17 @@ class _ProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 56),
-      child: Column(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: value,
-              minHeight: 3,
-              backgroundColor: AppColors.primary.withOpacity(0.4),
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Chargement…',
-            style: AppTextStyles.labelCaps.copyWith(
-              color: AppColors.textMuted, fontSize: 10,
-            ),
-          ),
-        ],
+    return SizedBox(
+      width: 160,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(2),
+        child: LinearProgressIndicator(
+          value: value,
+          minHeight: 3,
+          backgroundColor: AppColors.primarySoft,
+          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryLight),
+        ),
       ),
-    );
-  }
-}
-
-class _Footer extends StatelessWidget {
-  const _Footer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          'Version 1.0.0',
-          style: AppTextStyles.labelCaps.copyWith(
-            color: AppColors.sidebarText.withOpacity(0.4), fontSize: 10,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '© 2025 — Projet PFE',
-          style: AppTextStyles.labelCaps.copyWith(
-            color: AppColors.sidebarText.withOpacity(0.25), fontSize: 9,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DecorativeCircle extends StatelessWidget {
-  const _DecorativeCircle({required this.size, required this.color});
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size, height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
     );
   }
 }

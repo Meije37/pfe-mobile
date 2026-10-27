@@ -8,9 +8,10 @@ import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../../../../core/constants/app_constants.dart';
-import '../../../../../core/theme/app_colors.dart';
-import '../../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/app_components.dart';
+import '../../../../core/widgets/brand.dart';
+import '../../../../shared/widgets/categorie_icon.dart';
 import '../../data/datasources/reclamation_remote_datasource.dart';
 import '../../data/models/reclamation_request_model.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
@@ -42,7 +43,9 @@ class _NouvelleReclamationPageState extends State<NouvelleReclamationPage> {
   bool _loading     = false;
   bool _loadingCats = true;
   bool _locating    = false;
-  int  _currentStep = 0;   // ✅ PAS IndexedStack — juste un int
+  int  _currentStep = 0;
+  String? _erreurCategorie;
+  String? _erreurPosition;
 
   final _datasource = ReclamationRemoteDataSource();
 
@@ -65,7 +68,7 @@ Future<void> _loadCategories() async {
       setState(() { _categories = cats; _loadingCats = false; });
     } catch (e) {
       setState(() => _loadingCats = false);
-      _snack('Catégories indisponibles : ${mapError(e).message}', err: true);
+      _snack('Catégories indisponibles : ${mapError(e).message}');
     }
   }
 
@@ -74,7 +77,7 @@ Future<void> _loadCategories() async {
     final status = await Permission.locationWhenInUse.request();
     if (!status.isGranted) {
       setState(() => _locating = false);
-      _snack('Permission refusée', err: true);
+      _snack('Autorisez l\'accès à la position pour utiliser cette fonction.');
       return;
     }
     try {
@@ -82,10 +85,11 @@ Future<void> _loadCategories() async {
           desiredAccuracy: LocationAccuracy.high);
       final ll = LatLng(pos.latitude, pos.longitude);
       _mapCtrl.move(ll, 16);
+      setState(() => _erreurPosition = null);
       await _setMarker(ll);
     } catch (_) {
-      _snack('Impossible d\'obtenir la position', err: true);
-    } finally { setState(() => _locating = false); }
+      _snack('Impossible d\'obtenir votre position. Placez le repère à la main.');
+    } finally { if (mounted) setState(() => _locating = false); }
   }
 
   Future<void> _setMarker(LatLng pos) async {
@@ -109,7 +113,7 @@ Future<void> _pickImage(ImageSource src) async {
       (defaultTargetPlatform == TargetPlatform.windows ||
        defaultTargetPlatform == TargetPlatform.linux ||
        defaultTargetPlatform == TargetPlatform.macOS)) {
-    _snack('Caméra non disponible sur ordinateur. Utilisez la galerie.', err: true);
+    _snack('Appareil photo non disponible sur ordinateur : utilisez la galerie.');
     return;
   }
 
@@ -118,17 +122,41 @@ Future<void> _pickImage(ImageSource src) async {
         source: src, imageQuality: 70, maxWidth: 1200);
     if (x != null) setState(() => _imageFile = File(x.path));
   } catch (e) {
-    _snack('Erreur sélection image : $e', err: true);
+    _snack('Impossible d\'ajouter cette image.');
   }
 }
 
-  Future<void> _soumettre() async {
-    if (!_formKey.currentState!.validate()) {
-      setState(() => _currentStep = 0); return;
+  /// Valide l'étape courante avant de passer à la suivante.
+  bool _etapeValide() {
+    if (_currentStep == 0) {
+      final formOk = _formKey.currentState?.validate() ?? false;
+      final catOk = _selectedCatId != null;
+      setState(() => _erreurCategorie = catOk ? null : 'Choisissez une catégorie');
+      return formOk && catOk;
     }
-    if (_selectedCatId == null) {
-      _snack('Choisir une catégorie', err: true);
-      setState(() => _currentStep = 0); return;
+    if (_currentStep == 1 && _selectedPosition == null) {
+      setState(() => _erreurPosition = 'Indiquez où se trouve le problème sur la carte');
+      return false;
+    }
+    return true;
+  }
+
+  void _suivant() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!_etapeValide()) return;
+    if (_currentStep < 2) {
+      setState(() => _currentStep++);
+    } else {
+      _soumettre();
+    }
+  }
+
+  Future<void> _soumettre() async {
+    if (_selectedCatId == null ||
+        _titreCtrl.text.trim().length < 5 ||
+        _descCtrl.text.trim().length < 10) {
+      setState(() => _currentStep = 0);
+      return;
     }
     setState(() => _loading = true);
     try {
@@ -142,87 +170,135 @@ Future<void> _pickImage(ImageSource src) async {
         quartier: _quartierCtrl.text.trim().isEmpty ? null : _quartierCtrl.text.trim(),
         ville:    _villeCtrl.text.trim().isEmpty    ? null : _villeCtrl.text.trim(),
       );
-      await _datasource.deposerReclamation(model: m, imageFile: _imageFile);
+      final res = await _datasource.deposerReclamation(model: m, imageFile: _imageFile);
       if (!mounted) return;
-      _dialogSucces();
-    }  catch (e) {
-      _snack(mapError(e).message, err: true);
-    } finally { if (mounted) setState(() => _loading = false); }
+      _dialogSucces(res['reference'] as String?);
+    } catch (e) {
+      _snack(mapError(e).message);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  void _dialogSucces() => showDialog(
-    context: context, barrierDismissible: false,
-    builder: (_) => Dialog(
-      backgroundColor: AppColors.primary,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppConstants.radiusCard)),
+  void _dialogSucces(String? reference) => showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => Dialog(
       child: Padding(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
             width: 64, height: 64,
-            decoration: BoxDecoration(shape: BoxShape.circle,
-                color: AppColors.success.withOpacity(0.15)),
-            child: const Icon(Icons.check_circle_outline,
-                color: AppColors.success, size: 36),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.badgeResolieBg,
+            ),
+            child: const Icon(Icons.check_rounded, color: AppColors.success, size: 34),
           ),
           const SizedBox(height: 16),
-          Text('Réclamation envoyée !',
-              style: AppTextStyles.h3.copyWith(color: Colors.white),
-              textAlign: TextAlign.center),
+          const Text(
+            'Réclamation enregistrée',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+          ),
           const SizedBox(height: 8),
-          Text('Enregistrée avec succès.',
-              style: AppTextStyles.bodySm.copyWith(
-                  color: AppColors.sidebarText),
-              textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          SizedBox(width: double.infinity, height: 44,
-            child: ElevatedButton(
-              onPressed: () { Navigator.of(context).pop(); context.go('/home'); },
-              child: const Text('Retour à l\'accueil'),
+          const Text(
+            'Elle a été transmise au service compétent. Vous serez notifié à chaque étape de son traitement.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, height: 1.5, color: AppColors.textSecondary),
+          ),
+          if (reference != null) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceSubtle,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(children: [
+                const Text('Votre référence', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                const SizedBox(height: 2),
+                Text(
+                  reference,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: AppColors.primaryLight,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ]),
             ),
+          ],
+          const SizedBox(height: 24),
+          PrimaryButton(
+            label: 'Suivre mes réclamations',
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              context.go('/home/reclamations');
+            },
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              context.go('/home');
+            },
+            child: const Text('Retour à l\'accueil'),
           ),
         ]),
       ),
     ),
   );
 
-  void _snack(String msg, {bool err = false}) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(msg),
-        backgroundColor: err ? AppColors.danger : AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ));
+  void _snack(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
   // ═══════════════════════════════════════════════════════════════════════
-  // BUILD — ✅ PAS de IndexedStack, juste if/else sur _currentStep
+  // BUILD
   // ═══════════════════════════════════════════════════════════════════════
+  static const _libellesEtapes = ['Le problème', 'Le lieu', 'Photo et envoi'];
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryDark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Colors.white, size: 18),
-          onPressed: () => context.go('/home'),
+    return PopScope(
+      canPop: _currentStep == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => _currentStep--);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: PageAppBar(
+          title: 'Nouvelle réclamation',
+          subtitle: 'Étape ${_currentStep + 1} sur 3 · ${_libellesEtapes[_currentStep]}',
+          onBack: () {
+            if (_currentStep > 0) {
+              setState(() => _currentStep--);
+            } else {
+              context.go('/home');
+            }
+          },
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(44),
+            child: _stepBar(),
+          ),
         ),
-        title: Text('Nouvelle réclamation',
-            style: AppTextStyles.h3.copyWith(color: Colors.white)),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: _stepBar(),
-        ),
-      ),
-      body: Form(
-        key: _formKey,
-        child: Column(children: [
-          Expanded(child:
-            // ✅ if/else simple — pas IndexedStack
-            _currentStep == 0 ? _step1() :
-            _currentStep == 1 ? _step2() : _step3(),
+        body: Column(children: [
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: KeyedSubtree(
+                key: ValueKey(_currentStep),
+                child: _currentStep == 0
+                    ? _step1()
+                    : _currentStep == 1
+                        ? _step2()
+                        : _step3(),
+              ),
+            ),
           ),
           _bottomBar(),
         ]),
@@ -230,352 +306,282 @@ Future<void> _pickImage(ImageSource src) async {
     );
   }
 
-  // ── Barre étapes ──────────────────────────────────────────────────────
+  // ── Barre d'étapes ────────────────────────────────────────────────────
   Widget _stepBar() {
-    const labels = ['Informations', 'Localisation', 'Photo'];
-    return Container(
-      color: AppColors.primaryDark,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      child: Row(
-        children: List.generate(3, (i) {
-          final active = i == _currentStep;
-          final done   = i < _currentStep;
-          return Expanded(child: Row(children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              width: 24, height: 24,
-              decoration: BoxDecoration(shape: BoxShape.circle,
-                color: done ? AppColors.success
-                     : active ? AppColors.accent
-                     : AppColors.primaryLight.withOpacity(0.3)),
-              child: Center(child: done
-                  ? const Icon(Icons.check, size: 14, color: Colors.white)
-                  : Text('${i+1}', style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700,
-                      color: active ? AppColors.primaryDark : AppColors.textMuted))),
-            ),
-            const SizedBox(width: 6),
-            Flexible(child: Text(labels[i], overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                color: active ? AppColors.accent
-                     : done   ? AppColors.success : AppColors.textMuted))),
-            if (i < 2) ...[
-              const SizedBox(width: 6),
-              Expanded(child: Container(height: 1,
-                color: done
-                    ? AppColors.success.withOpacity(0.5)
-                    : AppColors.primaryLight.withOpacity(0.2))),
-            ],
-          ]));
-        }),
+    return Semantics(
+      label: 'Étape ${_currentStep + 1} sur 3',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Row(
+          children: List.generate(3, (i) {
+            final done   = i < _currentStep;
+            final active = i == _currentStep;
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: (done || active) ? AppColors.primaryLight : AppColors.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _libellesEtapes[i],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                        color: active
+                            ? AppColors.textPrimary
+                            : done ? AppColors.primaryLight : AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ),
       ),
     );
   }
 
-  // ── ÉTAPE 1 : Infos ───────────────────────────────────────────────────
-  Widget _step1() => SingleChildScrollView(
-    padding: const EdgeInsets.all(AppConstants.paddingPage),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        const Icon(Icons.info_outline, size: 20, color: AppColors.primary),
-        const SizedBox(width: 8),
-        Text('Informations', style: AppTextStyles.h3),
-      ]),
-      const SizedBox(height: 16),
-
-      Text('CATÉGORIE *', style: AppTextStyles.labelCaps),
-      const SizedBox(height: 6),
-      _loadingCats
-          ? const Center(child: CircularProgressIndicator())
-          : Container(
-              decoration: BoxDecoration(color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border)),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: _selectedCatId, isExpanded: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  hint: Text('Choisir une catégorie', style: AppTextStyles.bodySm),
-                  borderRadius: BorderRadius.circular(10),
-                  items: _categories.map<DropdownMenuItem<int>>((c) =>
-                      DropdownMenuItem(
-                        value: c['idCategorie'] as int,
-                        child: Text(c['nom'] as String, style: AppTextStyles.body),
-                      )).toList(),
-                  onChanged: (v) => setState(() => _selectedCatId = v),
-                ),
-              )),
-      const SizedBox(height: 16),
-
-      Text('TITRE *', style: AppTextStyles.labelCaps),
-      const SizedBox(height: 6),
-      TextFormField(controller: _titreCtrl, style: AppTextStyles.body,
-        decoration: _deco(hint: 'Ex : Fuite d\'eau rue principale...'),
-        validator: (v) => (v == null || v.trim().length < 5)
-            ? 'Minimum 5 caractères' : null),
-      const SizedBox(height: 16),
-
-      Text('DESCRIPTION *', style: AppTextStyles.labelCaps),
-      const SizedBox(height: 6),
-      TextFormField(controller: _descCtrl, maxLines: 5, style: AppTextStyles.body,
-        decoration: _deco(hint: 'Décrivez le problème en détail...'),
-        validator: (v) => (v == null || v.trim().length < 10)
-            ? 'Minimum 10 caractères' : null),
-    ]),
-  );
-
-  // ── ÉTAPE 2 : Carte ───────────────────────────────────────────────────
-  Widget _step2() => Column(children: [
-    // Barre GPS
-    Container(color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(children: [
-        const Icon(Icons.touch_app, size: 16, color: AppColors.textMuted),
-        const SizedBox(width: 6),
-        Expanded(child: Text(
-          _selectedPosition != null
-              ? 'Position sélectionnée ✅'
-              : 'Appuyez sur la carte pour placer le marqueur',
-          style: AppTextStyles.bodySm.copyWith(
-            color: _selectedPosition != null ? AppColors.success : AppColors.textMuted),
-        )),
-        const SizedBox(width: 8),
-        SizedBox(height: 36,
-         width: 130, 
-          child: ElevatedButton.icon(
-            onPressed: _locating ? null : _getMyLocation,
-            icon: _locating
-                ? const SizedBox(width: 14, height: 14,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: AppColors.primaryDark))
-                : const Icon(Icons.my_location, size: 16),
-            label: Text(_locating ? '...' : 'Ma position',
-                style: const TextStyle(fontSize: 12)),
-            style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12)),
-          ),
+  // ── ÉTAPE 1 : catégorie, titre, description ─────────────────────────
+  Widget _step1() => Form(
+    key: _formKey,
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+      children: [
+        const SectionHeader(
+          title: 'Quel est le problème ?',
+          subtitle: 'Choisissez la catégorie qui correspond le mieux : elle détermine le service qui traitera votre demande.',
         ),
-      ]),
-    ),
-
-    // ✅ Carte OSM
-Expanded(
-  flex: 3,
-  child: LayoutBuilder(
-    builder: (context, constraints) {
-      return SizedBox(
-        width: constraints.maxWidth,
-        height: constraints.maxHeight,
-        child: FlutterMap(
-          mapController: _mapCtrl,
-          options: MapOptions(
-            initialCenter: _nouakchott, initialZoom: 13,
-            onTap: (_, ll) => _setMarker(ll),
+        if (_loadingCats)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+          )
+        else if (_categories.isEmpty)
+          const InfoBanner(
+            tone: InfoTone.warning,
+            message: 'Les catégories n\'ont pas pu être chargées. Vérifiez votre connexion.',
+          )
+        else
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 2.3,
+            children: _categories.map<Widget>((c) {
+              final id = c['idCategorie'] as int;
+              final nom = c['nom'] as String? ?? '—';
+              return _TuileCategorie(
+                nom: nom,
+                icon: iconeCategorie(nom),
+                selected: _selectedCatId == id,
+                onTap: () => setState(() {
+                  _selectedCatId = id;
+                  _erreurCategorie = null;
+                }),
+              );
+            }).toList(),
           ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-              subdomains: const ['a', 'b', 'c', 'd'],
-              userAgentPackageName: 'com.pfe.citoyen_app',
-            ),
-            if (_selectedPosition != null)
-              MarkerLayer(markers: [Marker(
-                point: _selectedPosition!, width: 40, height: 40,
-                child: const Icon(Icons.location_pin,
-                    color: AppColors.danger, size: 40),
-              )]),
-          ],
+        if (_erreurCategorie != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(_erreurCategorie!, style: const TextStyle(fontSize: 12, color: AppColors.danger)),
+          ),
+        const SizedBox(height: 24),
+        AppInputField(
+          label: 'Titre',
+          isRequired: true,
+          controller: _titreCtrl,
+          hint: 'Ex. : Fuite d\'eau devant l\'école',
+          maxLength: 100,
+          textCapitalization: TextCapitalization.sentences,
+          validator: (v) => (v == null || v.trim().length < 5)
+              ? 'Au moins 5 caractères' : null,
         ),
-      );
-    },
-  ),
-),
-
-    // Coordonnées
-    if (_selectedPosition != null)
-      Container(
-        color: AppColors.success.withOpacity(0.08),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: Row(children: [
-          const Icon(Icons.gps_fixed, size: 14, color: AppColors.success),
-          const SizedBox(width: 6),
-          Text(
-            'Lat: ${_selectedPosition!.latitude.toStringAsFixed(5)}'
-            '   Lng: ${_selectedPosition!.longitude.toStringAsFixed(5)}',
-            style: AppTextStyles.labelCaps.copyWith(
-                color: AppColors.success, fontSize: 10),
-          ),
-        ]),
-      ),
-
-    // Adresse
-    Expanded(flex: 2,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('ADRESSE (auto-remplie)', style: AppTextStyles.labelCaps),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(flex: 2, child: _sf(_adresseCtrl, 'Adresse')),
-            const SizedBox(width: 10),
-            Expanded(child: _sf(_quartierCtrl, 'Quartier')),
-          ]),
-          const SizedBox(height: 8),
-          _sf(_villeCtrl, 'Ville'),
-        ]),
-      ),
-    ),
-  ]);
-
-  // ── ÉTAPE 3 : Photo ───────────────────────────────────────────────────
-  Widget _step3() => SingleChildScrollView(
-    padding: const EdgeInsets.all(AppConstants.paddingPage),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        const Icon(Icons.camera_alt_outlined, size: 20, color: AppColors.primary),
-        const SizedBox(width: 8),
-        Text('Ajouter une photo', style: AppTextStyles.h3),
-      ]),
-      const SizedBox(height: 6),
-      Text('Optionnel — aide les agents à comprendre le problème.',
-          style: AppTextStyles.bodySm),
-      const SizedBox(height: 20),
-
-      if (_imageFile != null) ...[
-        ClipRRect(borderRadius: BorderRadius.circular(12),
-          child: Image.file(_imageFile!,
-              width: double.infinity, height: 220, fit: BoxFit.cover)),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => setState(() => _imageFile = null),
-          icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 18),
-          label: const Text('Supprimer', style: TextStyle(color: AppColors.danger)),
-          style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.danger),
-              minimumSize: const Size.fromHeight(44)),
+        AppInputField(
+          label: 'Description',
+          isRequired: true,
+          controller: _descCtrl,
+          hint: 'Décrivez le problème : depuis quand, son ampleur, les risques éventuels…',
+          maxLines: 5,
+          minLines: 4,
+          maxLength: 1000,
+          textCapitalization: TextCapitalization.sentences,
+          validator: (v) => (v == null || v.trim().length < 10)
+              ? 'Au moins 10 caractères' : null,
         ),
-      ] else ...[
-  // ✅ Bouton caméra seulement sur mobile (Android/iOS)
-  if (defaultTargetPlatform == TargetPlatform.android ||
-      defaultTargetPlatform == TargetPlatform.iOS) ...[
-    _pickBtn(Icons.camera_alt_outlined, 'Prendre une photo',
-        () => _pickImage(ImageSource.camera)),
-    const SizedBox(height: 12),
-  ],
-  _pickBtn(Icons.photo_library_outlined, 'Choisir une image',
-      () => _pickImage(ImageSource.gallery)),
-],
-
-      const SizedBox(height: 24),
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.primaryDark.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('RÉCAPITULATIF', style: AppTextStyles.labelCaps.copyWith(
-              color: AppColors.primary, fontSize: 11)),
-          const SizedBox(height: 10),
-          _rr('Titre', _titreCtrl.text.isEmpty ? '—' : _titreCtrl.text),
-          _rr('Catégorie', _catNom()),
-          _rr('Localisation',
-              _selectedPosition != null ? '✅ Sélectionnée' : '⚠️ Non renseignée'),
-          _rr('Photo', _imageFile != null ? '✅ Ajoutée' : '— Optionnelle'),
-        ]),
-      ),
-    ]),
+      ],
+    ),
   );
+
+  // ── ÉTAPE 2 : localisation ─────────────────────────────────────────────
+  Widget _step2() => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+    children: [
+      const SectionHeader(
+        title: 'Où se trouve le problème ?',
+        subtitle: 'Touchez la carte pour placer le repère, ou utilisez votre position actuelle.',
+      ),
+      LocationPickerField(
+        position: _selectedPosition,
+        adresse: [_adresseCtrl.text, _quartierCtrl.text, _villeCtrl.text]
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .join(', '),
+        mapController: _mapCtrl,
+        locating: _locating,
+        defaultCenter: _nouakchott,
+        height: 240,
+        errorText: _erreurPosition,
+        onUseMyLocation: _getMyLocation,
+        onPositionChanged: (ll) {
+          setState(() => _erreurPosition = null);
+          _setMarker(ll);
+        },
+      ),
+      const SizedBox(height: 20),
+      AppInputField(
+        label: 'Adresse ou repère',
+        controller: _adresseCtrl,
+        hint: 'Ex. : en face de la mosquée, rue 42-150',
+        helper: 'Remplie automatiquement, modifiable',
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 12),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: AppInputField(
+              label: 'Quartier',
+              controller: _quartierCtrl,
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: AppInputField(
+              label: 'Ville',
+              controller: _villeCtrl,
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  // ── ÉTAPE 3 : photo + récapitulatif ─────────────────────────────────────
+  Widget _step3() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+      children: [
+        PhotoPickerField(
+          photo: _imageFile,
+          onCamera: () => _pickImage(ImageSource.camera),
+          onGallery: () => _pickImage(ImageSource.gallery),
+          onRemove: () => setState(() => _imageFile = null),
+        ),
+        const SizedBox(height: 24),
+        SectionCard(
+          title: 'Vérifiez avant d\'envoyer',
+          icon: Icons.fact_check_outlined,
+          child: Column(children: [
+            _rr('Catégorie', _catNom(), 0),
+            _rr('Titre', _titreCtrl.text.trim().isEmpty ? '—' : _titreCtrl.text.trim(), 0),
+            _rr('Lieu', _resumeLieu(), 1),
+            _rr('Photo', _imageFile != null ? 'Ajoutée' : 'Aucune (facultative)', 2),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        const InfoBanner(
+          tone: InfoTone.info,
+          message: 'Votre réclamation sera transmise au service compétent. Vous recevrez une notification à chaque changement de statut.',
+        ),
+      ],
+    );
+  }
+
+  String _resumeLieu() {
+    final txt = [_adresseCtrl.text, _quartierCtrl.text, _villeCtrl.text]
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .join(', ');
+    if (txt.isNotEmpty) return txt;
+    return _selectedPosition != null ? 'Position sélectionnée sur la carte' : '—';
+  }
 
   // ── Barre bas ─────────────────────────────────────────────────────────
   Widget _bottomBar() => Container(
-    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-    decoration: BoxDecoration(color: Colors.white,
-      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06),
-          blurRadius: 12, offset: const Offset(0, -3))]),
+    padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.paddingOf(context).bottom),
+    decoration: const BoxDecoration(
+      color: AppColors.cardBg,
+      border: Border(top: BorderSide(color: AppColors.border)),
+    ),
     child: Row(children: [
       if (_currentStep > 0) ...[
-        Expanded(child: OutlinedButton(
-          onPressed: () => setState(() => _currentStep--),
-          style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.border),
-              minimumSize: const Size.fromHeight(46)),
-          child: const Text('Précédent',
-              style: TextStyle(color: AppColors.textSecondary)),
-        )),
+        Expanded(
+          child: PrimaryButton(
+            label: 'Précédent',
+            variant: AppButtonVariant.outline,
+            onPressed: _loading ? null : () => setState(() => _currentStep--),
+          ),
+        ),
         const SizedBox(width: 12),
       ],
-      Expanded(flex: 2,
-        child: ElevatedButton(
-          onPressed: _loading ? null : () {
-            if (_currentStep < 2) setState(() => _currentStep++);
-            else _soumettre();
-          },
-          style: ElevatedButton.styleFrom(
-              minimumSize: const Size.fromHeight(46)),
-          child: _loading
-              ? const SizedBox(width: 20, height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppColors.primaryDark))
-              : Text(_currentStep < 2 ? 'Suivant →' : 'Envoyer la réclamation'),
+      Expanded(
+        flex: 2,
+        child: PrimaryButton(
+          label: _currentStep < 2 ? 'Continuer' : 'Envoyer la réclamation',
+          icon: _currentStep < 2 ? null : Icons.send_rounded,
+          loading: _loading,
+          onPressed: _suivant,
         ),
       ),
     ]),
   );
 
   // ── Helpers ───────────────────────────────────────────────────────────
-  InputDecoration _deco({String? hint}) => InputDecoration(
-    hintText: hint,
-    hintStyle: AppTextStyles.bodySm.copyWith(color: AppColors.textMuted),
-    filled: true, fillColor: Colors.white,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.border)),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.border)),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.primaryLight, width: 1.5)),
-    errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.danger)),
-  );
-
-  Widget _sf(TextEditingController c, String label) => TextFormField(
-    controller: c, style: AppTextStyles.bodySm,
-    decoration: InputDecoration(labelText: label,
-      labelStyle: AppTextStyles.labelCaps, isDense: true,
-      filled: true, fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.border)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.border)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: AppColors.primaryLight, width: 1.5)),
-    ),
-  );
-
-  Widget _pickBtn(IconData icon, String label, VoidCallback onTap) =>
-      GestureDetector(onTap: onTap,
-        child: Container(height: 68,
-          decoration: BoxDecoration(color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border)),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, color: AppColors.primaryLight, size: 24),
-            const SizedBox(width: 12),
-            Text(label, style: AppTextStyles.body.copyWith(
-                color: AppColors.primaryLight, fontWeight: FontWeight.w500)),
-          ]),
+  Widget _rr(String label, String val, int etape) => InkWell(
+    onTap: () => setState(() => _currentStep = etape),
+    borderRadius: BorderRadius.circular(8),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 90,
+          child: Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
         ),
-      );
-
-  Widget _rr(String label, String val) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(width: 100, child: Text(label, style: AppTextStyles.labelCaps)),
-      Expanded(child: Text(val, style: AppTextStyles.bodySm.copyWith(
-          color: AppColors.textPrimary), overflow: TextOverflow.ellipsis)),
-    ]),
+        Expanded(
+          child: Text(
+            val,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
+          ),
+        ),
+        if (etape != 2)
+          const Padding(
+            padding: EdgeInsets.only(left: 8),
+            child: Text('Modifier', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight)),
+          ),
+      ]),
+    ),
   );
 
   String _catNom() {
@@ -583,5 +589,64 @@ Expanded(
     final c = _categories.firstWhere(
         (x) => x['idCategorie'] == _selectedCatId, orElse: () => null);
     return c?['nom'] ?? '—';
+  }
+}
+
+/// Tuile de choix de catégorie (2 colonnes).
+class _TuileCategorie extends StatelessWidget {
+  const _TuileCategorie({
+    required this.nom,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String nom;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Material(
+        color: selected ? AppColors.primarySoft : AppColors.cardBg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: selected ? AppColors.primaryLight : AppColors.outline,
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(children: [
+              Icon(icon, size: 22, color: selected ? AppColors.primaryLight : AppColors.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  nom,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.25,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.primaryLight),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 }

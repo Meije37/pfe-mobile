@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/errors/app_failure.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text_styles.dart';
 
 /// Affiche une erreur réseau/serveur de façon cohérente sur tous les écrans
 /// (icône + message adaptés au type d'échec, bouton "Réessayer" seulement
@@ -40,22 +39,31 @@ class ErrorStateWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_icone, size: 44, color: AppColors.textMuted.withOpacity(0.5)),
-            const SizedBox(height: 14),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.surfaceAlt,
+              ),
+              child: Icon(_icone, size: 30, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
             Text(
               failure.message,
               textAlign: TextAlign.center,
-              style: AppTextStyles.bodySm.copyWith(color: AppColors.textMuted),
+              style: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.textLabel),
             ),
             if (onRetry != null && failure.estRecuperable) ...[
-              const SizedBox(height: 18),
+              const SizedBox(height: 20),
               OutlinedButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 16),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Réessayer'),
               ),
             ],

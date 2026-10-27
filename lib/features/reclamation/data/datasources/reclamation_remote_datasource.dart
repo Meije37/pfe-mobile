@@ -59,9 +59,11 @@ class ReclamationRemoteDataSource {
     required int size,
     int? categorieId,
     bool trierParVotes = false,
+    // true : visiteur sans compte → endpoint /api/public (lecture seule)
+    bool invite = false,
   }) async {
     final response = await _dio.get(
-      AppConstants.citoyenReclamationsPubliques,
+      invite ? AppConstants.publicReclamations : AppConstants.citoyenReclamationsPubliques,
       queryParameters: {
         'page': page,
         'size': size,
@@ -78,6 +80,18 @@ class ReclamationRemoteDataSource {
   Future<Map<String, dynamic>> voter(int reclamationId) async {
     final response = await _dio.post(
       '${AppConstants.citoyenReclamationById}/$reclamationId${AppConstants.citoyenVoteSuffixe}',
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// GET /api/citoyen/reclamations/publiques/{id}
+  /// Détail complet d'une réclamation d'un AUTRE citoyen (photo, historique,
+  /// carte, votes) — sans exposer son email/téléphone, contrairement au
+  /// détail "privé" (getReclamationById) réservé au propriétaire.
+  Future<Map<String, dynamic>> getDetailPublique(int reclamationId, {bool invite = false}) async {
+    final base = invite ? AppConstants.publicReclamations : AppConstants.citoyenReclamationsPubliques;
+    final response = await _dio.get(
+      '$base/$reclamationId',
     );
     return response.data as Map<String, dynamic>;
   }

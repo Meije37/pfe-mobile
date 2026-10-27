@@ -5,12 +5,11 @@ import '../constants/app_constants.dart';
 import '../utils/app_routes.dart';
 import '../utils/global_keys.dart';
 import 'notification_socket_service.dart';
+import 'package:flutter/foundation.dart';
 
 class DioClient {
   DioClient._();
   static final DioClient instance = DioClient._();
-
-  static const _storage = FlutterSecureStorage();
 
   late final Dio _dio = Dio(
     BaseOptions(
@@ -21,11 +20,14 @@ class DioClient {
     ),
   )..interceptors.addAll([
       _AuthInterceptor(),
-      LogInterceptor(
-        requestBody: true,
-        responseBody: true,
-        logPrint: (o) => print('[DIO] $o'),
-      ),
+      // Journal des requêtes uniquement en mode debug : en production, il
+      // exposerait le contenu des requêtes (mots de passe compris).
+      if (kDebugMode)
+        LogInterceptor(
+          requestBody: true,
+          responseBody: true,
+          logPrint: (o) => debugPrint('[DIO] $o'),
+        ),
     ]);
 
   Dio get dio => _dio;

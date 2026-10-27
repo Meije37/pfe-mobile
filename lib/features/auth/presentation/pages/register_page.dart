@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/app_routes.dart';
 import '../../../auth/data/datasources/auth_remote_datasource.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
@@ -15,6 +13,7 @@ import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_text_field.dart';
+import '../widgets/auth_layout.dart';
 
 class RegisterPage extends StatelessWidget {
   const RegisterPage({super.key});
@@ -82,163 +81,123 @@ class _RegisterViewState extends State<_RegisterView> {
         }
         if (state is AuthFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: AppColors.danger,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
+            SnackBar(content: Text(state.message)),
           );
         }
       },
-      child: Scaffold(
-        backgroundColor: AppColors.primaryDark,
-        appBar: AppBar(
-          backgroundColor: AppColors.primaryDark,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new,
-                color: Colors.white, size: 18),
-            onPressed: () => context.go(AppRoutes.login),
-          ),
-          title: Text(
-            'Créer un compte',
-            style: AppTextStyles.h3.copyWith(color: Colors.white),
-          ),
-        ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppConstants.paddingPage),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Sous-titre
-                Text(
-                  'Remplissez vos informations pour créer votre compte citoyen.',
-                  style: AppTextStyles.bodySm.copyWith(
-                    color: AppColors.sidebarText,
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                Form(
-                  key: _formKey,
-                  child: Column(
+      child: AuthLayout(
+        showBack: true,
+        compactBrand: true,
+        onBack: () => context.go(AppRoutes.login),
+        title: 'Créer un compte citoyen',
+        subtitle: 'Ces informations permettent aux services de vous contacter au sujet de vos réclamations.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Nom + Prénom côte à côte
-                      Row(
-                        children: [
-                          Expanded(
-                            child: AppTextField(
-                              label: 'Nom',
-                              controller: _nomCtrl,
-                              hint: 'Ould Ahmed',
-                              prefixIcon: Icons.person_outline,
-                              validator: (v) => (v == null || v.isEmpty)
-                                  ? 'Requis'
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: AppTextField(
-                              label: 'Prénom',
-                              controller: _prenomCtrl,
-                              hint: 'Ahmed',
-                              validator: (v) => (v == null || v.isEmpty)
-                                  ? 'Requis'
-                                  : null,
-                            ),
-                          ),
-                        ],
+                      Expanded(
+                        child: AppTextField(
+                          label: 'Prénom',
+                          controller: _prenomCtrl,
+                          hint: 'Ahmed',
+                          autofillHints: const [AutofillHints.givenName],
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Obligatoire'
+                              : null,
+                        ),
                       ),
-                      AppTextField(
-                        label: 'Adresse e-mail',
-                        controller: _emailCtrl,
-                        hint: 'vous@exemple.mr',
-                        keyboardType: TextInputType.emailAddress,
-                        prefixIcon: Icons.email_outlined,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Email requis';
-                          if (!v.contains('@')) return 'Email invalide';
-                          return null;
-                        },
-                      ),
-                      AppTextField(
-                        label: 'Téléphone',
-                        controller: _telCtrl,
-                        hint: '20 00 00 00',
-                        keyboardType: TextInputType.phone,
-                        prefixIcon: Icons.phone_outlined,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Téléphone requis';
-                          final digits = v.replaceAll(' ', '');
-                          final regex = RegExp(r'^[234]\d{7}$');
-                          if (!regex.hasMatch(digits)) {
-                           return 'Doit commencer par 2, 3 ou 4 — 8 chiffres';
-                          }
-                          return null;
-                        },
-                      ),
-                      AppTextField(
-                        label: 'Mot de passe',
-                        controller: _pwdCtrl,
-                        hint: 'Minimum 6 caractères',
-                        obscure: true,
-                        prefixIcon: Icons.lock_outline,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _submit(),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return 'Mot de passe requis';
-                          }
-                          if (v.length < 6) {
-                            return 'Minimum 6 caractères';
-                          }
-                          return null;
-                        },
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: AppTextField(
+                          label: 'Nom',
+                          controller: _nomCtrl,
+                          hint: 'Ould Mohamed',
+                          autofillHints: const [AutofillHints.familyName],
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Obligatoire'
+                              : null,
+                        ),
                       ),
                     ],
                   ),
-                ),
-
-                // Bouton créer compte
-                BlocBuilder<AuthBloc, AuthState>(
-                  builder: (context, state) => AppButton(
-                    label: 'Créer mon compte',
-                    loading: state is AuthLoading,
-                    onPressed: _submit,
+                  AppTextField(
+                    label: 'Adresse e-mail',
+                    controller: _emailCtrl,
+                    hint: 'nom@exemple.mr',
+                    keyboardType: TextInputType.emailAddress,
+                    prefixIcon: Icons.mail_outline_rounded,
+                    autofillHints: const [AutofillHints.email],
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Saisissez votre adresse e-mail';
+                      if (!v.contains('@')) return 'Adresse e-mail invalide';
+                      return null;
+                    },
                   ),
+                  AppTextField(
+                    label: 'Téléphone',
+                    controller: _telCtrl,
+                    hint: '22 00 00 00',
+                    helper: '8 chiffres, commençant par 2, 3 ou 4',
+                    keyboardType: TextInputType.phone,
+                    prefixIcon: Icons.phone_outlined,
+                    autofillHints: const [AutofillHints.telephoneNumber],
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Saisissez votre numéro de téléphone';
+                      final digits = v.replaceAll(' ', '');
+                      final regex = RegExp(r'^[234]\d{7}$');
+                      if (!regex.hasMatch(digits)) {
+                        return 'Numéro invalide : 8 chiffres, commençant par 2, 3 ou 4';
+                      }
+                      return null;
+                    },
+                  ),
+                  AppTextField(
+                    label: 'Mot de passe',
+                    controller: _pwdCtrl,
+                    helper: 'Au moins 6 caractères',
+                    obscure: true,
+                    prefixIcon: Icons.lock_outline_rounded,
+                    textInputAction: TextInputAction.done,
+                    autofillHints: const [AutofillHints.newPassword],
+                    onFieldSubmitted: (_) => _submit(),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Choisissez un mot de passe';
+                      if (v.length < 6) return 'Au moins 6 caractères';
+                      return null;
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            BlocBuilder<AuthBloc, AuthState>(
+              builder: (context, state) => AppButton(
+                label: 'Créer mon compte',
+                loading: state is AuthLoading,
+                onPressed: _submit,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Déjà inscrit ?',
+                  style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
                 ),
-
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Déjà inscrit ? ',
-                      style: AppTextStyles.bodySm.copyWith(
-                        color: AppColors.sidebarText,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => context.go(AppRoutes.login),
-                      child: Text(
-                        'Se connecter',
-                        style: AppTextStyles.bodySm.copyWith(
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                TextButton(
+                  onPressed: () => context.go(AppRoutes.login),
+                  child: const Text('Se connecter'),
                 ),
-                const SizedBox(height: 24),
               ],
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -248,45 +207,37 @@ class _RegisterViewState extends State<_RegisterView> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => Dialog(
-        backgroundColor: AppColors.primary,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-        ),
+      builder: (dialogContext) => Dialog(
         child: Padding(
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 64, height: 64,
-                decoration: BoxDecoration(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.success.withOpacity(0.15),
+                  color: AppColors.badgeResolieBg,
                 ),
-                child: const Icon(
-                  Icons.check_circle_outline,
-                  color: AppColors.success, size: 36,
-                ),
+                child: const Icon(Icons.check_rounded, color: AppColors.success, size: 34),
               ),
-              const SizedBox(height: 20),
-              Text(
-                'Compte créé !',
-                style: AppTextStyles.h3.copyWith(color: Colors.white),
+              const SizedBox(height: 16),
+              const Text(
+                'Compte créé',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
               Text(
-                'Votre compte a été créé avec succès.\nVous pouvez maintenant vous connecter.',
-                style: AppTextStyles.bodySm.copyWith(
-                  color: AppColors.sidebarText,
-                ),
+                'Votre compte $email est prêt. Connectez-vous pour déposer votre première réclamation.',
                 textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 24),
               AppButton(
                 label: 'Se connecter',
                 onPressed: () {
-                  Navigator.of(context).pop();
+                  Navigator.of(dialogContext).pop();
                   context.go(AppRoutes.login);
                 },
               ),

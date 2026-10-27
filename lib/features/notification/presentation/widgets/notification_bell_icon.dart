@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import '../../data/datasources/notification_remote_datasource.dart';
 import '../pages/notifications_page.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/brand.dart';
 import '../../../../core/network/notification_socket_service.dart';
 
 /// Icône cloche avec badge de compteur, à placer dans un header/AppBar.
 /// Le compteur initial vient du REST ; les nouvelles notifications arrivent
 /// ensuite en temps réel via WebSocket/STOMP (voir NotificationSocketService).
 class NotificationBellIcon extends StatefulWidget {
-  const NotificationBellIcon({super.key, this.iconColor = AppColors.sidebarText});
+  const NotificationBellIcon({super.key, this.iconColor = AppColors.textLabel});
 
   final Color iconColor;
 
@@ -63,39 +64,34 @@ class _NotificationBellIconState extends State<NotificationBellIcon> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        IconButton(
-          onPressed: _ouvrirNotifications,
-          icon: Icon(Icons.notifications_none, color: widget.iconColor, size: 22),
-          tooltip: 'Notifications',
-        ),
-        if (_nombreNonLues > 0)
-          Positioned(
-            top: 6,
-            right: 6,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+    return SquareIconButton(
+      icon: Icons.notifications_none_rounded,
+      tooltip: _nombreNonLues > 0
+          ? 'Notifications, $_nombreNonLues non lue${_nombreNonLues > 1 ? 's' : ''}'
+          : 'Notifications',
+      color: widget.iconColor,
+      onPressed: _ouvrirNotifications,
+      badge: _nombreNonLues > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
               decoration: BoxDecoration(
-                color: AppColors.danger,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.primaryDark, width: 1.5),
+                color: AppColors.flagRed,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: Colors.white, width: 2),
               ),
               child: Text(
                 _nombreNonLues > 9 ? '9+' : '$_nombreNonLues',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 9,
+                  fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  height: 1.2,
+                  height: 1.3,
                 ),
               ),
-            ),
-          ),
-      ],
+            )
+          : null,
     );
   }
 }

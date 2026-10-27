@@ -1,11 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/brand.dart';
+import '../../../../shared/widgets/loading_widget.dart';
 import '../../../auth/presentation/widgets/app_button.dart';
 import '../../data/datasources/profil_remote_datasource.dart';
 import '../widgets/light_text_field.dart';
@@ -135,28 +134,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryDark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
-          onPressed: () => context.pop(),
-        ),
-        title: Text('Modifier mon profil',
-            style: AppTextStyles.h3.copyWith(color: Colors.white)),
-      ),
+      appBar: const PageAppBar(title: 'Modifier mon profil'),
       body: _chargementInitial
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(AppConstants.paddingPage),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sectionInfos(),
-                  const SizedBox(height: 24),
-                  _sectionMotDePasse(),
-                  const SizedBox(height: 20),
-                ],
-              ),
+          ? const LoadingWidget()
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+              children: [
+                _sectionInfos(),
+                const SizedBox(height: 16),
+                _sectionMotDePasse(),
+              ],
             ),
     );
   }
@@ -164,34 +151,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Widget _sectionInfos() {
     return Form(
       key: _infosFormKey,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-          border: Border.all(color: AppColors.border),
-        ),
+      child: SectionCard(
+        title: 'Informations personnelles',
+        icon: Icons.person_outline_rounded,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Informations personnelles',
-                style: AppTextStyles.h3.copyWith(fontSize: 15)),
-            const SizedBox(height: 16),
-            LightTextField(
-              label: 'Nom',
-              controller: _nomCtrl,
-              prefixIcon: Icons.person_outline,
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Nom requis' : null,
-            ),
             LightTextField(
               label: 'Prénom',
               controller: _prenomCtrl,
-              prefixIcon: Icons.person_outline,
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Prénom requis' : null,
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Saisissez votre prénom' : null,
+            ),
+            LightTextField(
+              label: 'Nom',
+              controller: _nomCtrl,
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Saisissez votre nom' : null,
             ),
             LightTextField(
               label: 'Téléphone',
               controller: _telCtrl,
+              helper: '8 chiffres, commençant par 2, 3 ou 4',
               keyboardType: TextInputType.phone,
               prefixIcon: Icons.phone_outlined,
               textInputAction: TextInputAction.done,
@@ -202,15 +181,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
               onFieldSubmitted: (_) => _enregistrerInfos(),
               validator: (v) {
                 if (v == null || !RegExp(r'^[234]\d{7}$').hasMatch(v.trim())) {
-                  return 'Format mauritanien invalide (ex: 2XXXXXXX)';
+                  return 'Numéro invalide : 8 chiffres, commençant par 2, 3 ou 4';
                 }
                 return null;
               },
             ),
             if (_erreurInfos != null) _erreur(_erreurInfos!),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             AppButton(
-              label: 'Enregistrer les informations',
+              label: 'Enregistrer',
               loading: _enregistrementInfos,
               onPressed: _enregistrerInfos,
             ),
@@ -223,46 +202,38 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Widget _sectionMotDePasse() {
     return Form(
       key: _pwdFormKey,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-          border: Border.all(color: AppColors.border),
-        ),
+      child: SectionCard(
+        title: 'Mot de passe',
+        icon: Icons.lock_outline_rounded,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Changer le mot de passe',
-                style: AppTextStyles.h3.copyWith(fontSize: 15)),
-            const SizedBox(height: 16),
             LightTextField(
               label: 'Mot de passe actuel',
               controller: _ancienPwdCtrl,
               obscure: true,
-              prefixIcon: Icons.lock_outline,
-              validator: (v) => (v == null || v.isEmpty) ? 'Requis' : null,
+              validator: (v) => (v == null || v.isEmpty) ? 'Saisissez votre mot de passe actuel' : null,
             ),
             LightTextField(
               label: 'Nouveau mot de passe',
               controller: _nouveauPwdCtrl,
+              helper: 'Au moins 6 caractères',
               obscure: true,
-              prefixIcon: Icons.lock_outline,
               validator: (v) => (v == null || v.length < 6) ? 'Au moins 6 caractères' : null,
             ),
             LightTextField(
               label: 'Confirmer le nouveau mot de passe',
               controller: _confirmPwdCtrl,
               obscure: true,
-              prefixIcon: Icons.lock_outline,
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => _enregistrerMotDePasse(),
-              validator: (v) => (v == null || v.isEmpty) ? 'Confirmation requise' : null,
+              validator: (v) => (v == null || v.isEmpty) ? 'Confirmez le mot de passe' : null,
             ),
             if (_erreurPwd != null) _erreur(_erreurPwd!),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             AppButton(
               label: 'Changer le mot de passe',
+              outlined: true,
               loading: _enregistrementPwd,
               onPressed: _enregistrerMotDePasse,
             ),
@@ -273,7 +244,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Widget _erreur(String message) => Padding(
-    padding: const EdgeInsets.only(top: 4, bottom: 8),
-    child: Text(message, style: AppTextStyles.bodySm.copyWith(color: AppColors.danger)),
+    padding: const EdgeInsets.only(bottom: 12),
+    child: InfoBanner(tone: InfoTone.danger, message: message),
   );
 }

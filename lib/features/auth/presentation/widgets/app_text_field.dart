@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 
+import '../../../../core/theme/app_colors.dart';
+
+/// Champ des écrans d'authentification (connexion, inscription, mot de passe
+/// oublié) : libellé au-dessus, fond blanc, bordure grise, focus vert.
+/// Les couleurs viennent du thème (inputDecorationTheme).
 class AppTextField extends StatefulWidget {
   const AppTextField({
     super.key,
@@ -16,6 +19,8 @@ class AppTextField extends StatefulWidget {
     this.textInputAction = TextInputAction.next,
     this.onFieldSubmitted,
     this.inputFormatters,
+    this.autofillHints,
+    this.helper,
   });
 
   final String label;
@@ -28,6 +33,8 @@ class AppTextField extends StatefulWidget {
   final TextInputAction textInputAction;
   final void Function(String)? onFieldSubmitted;
   final List<TextInputFormatter>? inputFormatters;
+  final Iterable<String>? autofillHints;
+  final String? helper;
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -44,90 +51,51 @@ class _AppTextFieldState extends State<AppTextField> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.label.toUpperCase(),
-          style: AppTextStyles.labelCaps.copyWith(
-            color: AppColors.sidebarText.withOpacity(0.7),
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          controller: widget.controller,
-          obscureText: _obscure,
-          keyboardType: widget.keyboardType,
-          textInputAction: widget.textInputAction,
-          onFieldSubmitted: widget.onFieldSubmitted,
-          inputFormatters: widget.inputFormatters,
-          validator: widget.validator,
-          style: AppTextStyles.body.copyWith(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: widget.hint,
-            hintStyle: AppTextStyles.bodySm.copyWith(
-              color: AppColors.textMuted.withOpacity(0.6),
-            ),
-            filled: true,
-            fillColor: AppColors.primary.withOpacity(0.5),
-            prefixIcon: widget.prefixIcon != null
-                ? Icon(widget.prefixIcon,
-                    size: 18, color: AppColors.textMuted)
-                : null,
-            suffixIcon: widget.obscure
-                ? IconButton(
-                    icon: Icon(
-                      _obscure ? Icons.visibility_off : Icons.visibility,
-                      size: 18,
-                      color: AppColors.textMuted,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscure = !_obscure),
-                  )
-                : null,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: AppColors.primaryLight.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(
-                color: AppColors.primaryLight.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(
-                color: AppColors.accent,
-                width: 1.5,
-              ),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(
-                color: AppColors.danger,
-                width: 1,
-              ),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(
-                color: AppColors.danger,
-                width: 1.5,
-              ),
-            ),
-            errorStyle: AppTextStyles.labelCaps.copyWith(
-              color: AppColors.danger,
-              fontSize: 10,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.label,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textLabel,
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-      ],
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: widget.controller,
+            obscureText: _obscure,
+            keyboardType: widget.keyboardType,
+            textInputAction: widget.textInputAction,
+            onFieldSubmitted: widget.onFieldSubmitted,
+            inputFormatters: widget.inputFormatters,
+            autofillHints: widget.autofillHints,
+            validator: widget.validator,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            style: const TextStyle(fontSize: 16, color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              helperText: widget.helper,
+              prefixIcon: widget.prefixIcon != null
+                  ? Icon(widget.prefixIcon, size: 20)
+                  : null,
+              suffixIcon: widget.obscure
+                  ? IconButton(
+                      tooltip: _obscure ? 'Afficher le mot de passe' : 'Masquer le mot de passe',
+                      icon: Icon(
+                        _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        size: 20,
+                      ),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    )
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

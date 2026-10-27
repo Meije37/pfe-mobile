@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
@@ -23,27 +22,29 @@ class VoteBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color couleur = aVote ? AppColors.accent : AppColors.textMuted;
+    final Color couleur = aVote ? AppColors.primaryLight : AppColors.textLabel;
 
     return Material(
-      color: aVote ? AppColors.accentLight.withOpacity(0.35) : Colors.white,
+      color: aVote ? AppColors.primarySoft : Colors.white,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: aVote ? AppColors.accent : AppColors.border,
+              color: aVote ? AppColors.primaryBorder : AppColors.outline,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                aVote ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                // Pouce levé : « j'appuie cette demande » (le cœur évoque plutôt un simple « j'aime »)
+                aVote ? Icons.thumb_up_alt_rounded : Icons.thumb_up_alt_outlined,
                 size: 18,
                 color: couleur,
               ),
@@ -59,7 +60,7 @@ class VoteBar extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: aVote ? AppColors.accent : AppColors.background,
+                  color: aVote ? AppColors.primaryLight : AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(

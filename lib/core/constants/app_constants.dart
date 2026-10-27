@@ -37,6 +37,9 @@ static String get mediaBaseUrl {
   // Suffixe à concaténer : '/citoyen/reclamations/$id/vote'
   static const String citoyenVoteSuffixe = '/vote';
   static const String publicCategories       = '/public/categories';
+  // Consultation sans compte (lecture seule)
+  static const String publicReclamations     = '/public/reclamations';
+  static const String publicStats            = '/public/stats';
 
   static const String notifications            = '/notifications';
   static const String notificationsNonLuesCount = '/notifications/non-lues/count';

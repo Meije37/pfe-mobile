@@ -1,14 +1,13 @@
-
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text_styles.dart';
 
+/// État vide : pictogramme dans une pastille, message, explication et action.
 class EmptyStateWidget extends StatelessWidget {
   const EmptyStateWidget({
     super.key,
     required this.message,
     this.subtitle,
-    this.icon = Icons.folder_open_outlined,
+    this.icon = Icons.inbox_outlined,
     this.actionLabel,
     this.onAction,
   });
@@ -23,27 +22,43 @@ class EmptyStateWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(40),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 64,
-                color: AppColors.textMuted.withOpacity(0.35)),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primarySoft,
+              ),
+              child: Icon(icon, size: 30, color: AppColors.primaryLight),
+            ),
             const SizedBox(height: 16),
-            Text(message,
-                style: AppTextStyles.h3.copyWith(color: AppColors.textMuted),
-                textAlign: TextAlign.center),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
             if (subtitle != null) ...[
-              const SizedBox(height: 8),
-              Text(subtitle!,
-                  style: AppTextStyles.bodySm,
-                  textAlign: TextAlign.center),
+              const SizedBox(height: 6),
+              Text(
+                subtitle!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, height: 1.5, color: AppColors.textSecondary),
+              ),
             ],
             if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: onAction,
-                icon: const Icon(Icons.add, size: 18),
+                style: ElevatedButton.styleFrom(minimumSize: const Size(0, 48)),
+                icon: const Icon(Icons.add_rounded, size: 20),
                 label: Text(actionLabel!),
               ),
             ],

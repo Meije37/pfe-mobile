@@ -1,8 +1,9 @@
-
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/brand.dart';
+import '../../../../shared/widgets/categorie_icon.dart';
 import '../../../../core/errors/error_mapper.dart';
 import '../../../../core/errors/app_failure.dart';
 import '../../../../shared/widgets/empty_state_widget.dart';
@@ -11,6 +12,8 @@ import '../../../../shared/widgets/loading_widget.dart';
 import '../../../../shared/widgets/reclamation_card.dart';
 import '../../data/datasources/reclamation_remote_datasource.dart';
 import '../widgets/vote_bar.dart';
+import '../widgets/invitation_connexion.dart';
+import '../../../../core/utils/app_routes.dart';
 
 /// Écran "Réclamations publiques" : les réclamations de TOUS les citoyens,
 /// avec un bouton de vote ("Je soutiens") sur celles qui ne sont pas les
@@ -18,7 +21,10 @@ import '../widgets/vote_bar.dart';
 /// écran de détail complet ici (le détail est réservé au propriétaire côté
 /// serveur) — un tap ouvre une fiche résumée en bas d'écran.
 class ReclamationsPubliquesPage extends StatefulWidget {
-  const ReclamationsPubliquesPage({super.key});
+  const ReclamationsPubliquesPage({super.key, this.invite = false});
+
+  /// true : visiteur sans compte (lecture seule, vote → invitation à se connecter).
+  final bool invite;
 
   @override
   State<ReclamationsPubliquesPage> createState() =>
@@ -86,6 +92,7 @@ class _ReclamationsPubliquesPageState
         size: _taillePage,
         categorieId: _categorieId,
         trierParVotes: _trierParVotes,
+        invite: widget.invite,
       );
       setState(() {
         _items = data['content'] as List<dynamic>;
@@ -110,6 +117,7 @@ class _ReclamationsPubliquesPageState
         size: _taillePage,
         categorieId: _categorieId,
         trierParVotes: _trierParVotes,
+        invite: widget.invite,
       );
       setState(() {
         _items.addAll(data['content'] as List<dynamic>);
@@ -123,6 +131,10 @@ class _ReclamationsPubliquesPageState
   }
 
   Future<void> _basculerVote(Map<String, dynamic> item, int index) async {
+    if (widget.invite) {
+      demanderConnexion(context, action: 'soutenir ce signalement');
+      return;
+    }
     // Mise à jour optimiste : l'UI réagit tout de suite, sans attendre le
     // serveur — plus fluide. En cas d'échec réseau, on annule le changement.
     final ancienAVote = item['aVote'] as bool? ?? false;
@@ -155,107 +167,143 @@ class _ReclamationsPubliquesPageState
   }
 
   void _ouvrirFiche(Map<String, dynamic> item, int index) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(item['titre'] as String? ?? '—',
-                style: AppTextStyles.h3),
-            const SizedBox(height: 4),
-            Text(item['reference'] as String? ?? '',
-                style: AppTextStyles.mono.copyWith(color: AppColors.textMuted)),
-            const SizedBox(height: 4),
-            Text(
-              'Signalé par ${item['citoyenPrenom'] as String? ?? 'un citoyen'}',
-              style: AppTextStyles.bodySm.copyWith(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              (item['description'] as String?)?.isNotEmpty == true
-                  ? item['description'] as String
-                  : 'Aucune description fournie.',
-              style: AppTextStyles.body,
-            ),
-            const SizedBox(height: 18),
-            VoteBar(
-              nombreVotes: item['nombreVotes'] as int? ?? 0,
-              aVote: item['aVote'] as bool? ?? false,
-              onTap: () => _basculerVote(item, index),
-            ),
-          ],
-        ),
-      ),
-    );
+    context.go(widget.invite
+        ? '${AppRoutes.explorer}/${item['id']}'
+        : '/home/reclamations-publiques/${item['id']}');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Réclamations publiques'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
+      appBar: PageAppBar(
+        title: widget.invite ? 'Signalements publics' : 'Réclamations du quartier',
+        subtitle: widget.invite
+            ? 'Consultation sans compte'
+            : 'Soutenez les signalements qui vous concernent',
+        onBack: () => context.canPop()
+            ? context.pop()
+            : context.go(widget.invite ? AppRoutes.accueilPublic : '/home'),
       ),
       body: Column(children: [
         _buildFiltres(),
         Expanded(child: _buildCorps()),
       ]),
+      // Visiteur : rappel permanent qu'un compte permet de signaler et de soutenir.
+      bottomNavigationBar: widget.invite ? const BandeauInvite() : null,
     );
   }
 
   Widget _buildFiltres() {
+    String? nomCategorie;
+    for (final c in _categories) {
+      if (c['idCategorie'] == _categorieId) nomCategorie = c['nom'] as String?;
+    }
+
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(children: [
-        // Tri
-        Expanded(
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Récentes')),
-              ButtonSegment(value: true, label: Text('Plus soutenues')),
+      decoration: const BoxDecoration(
+        color: AppColors.cardBg,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _chip('Récentes', !_trierParVotes, () => _changerTri(false)),
+            const SizedBox(width: 8),
+            _chip('Les plus soutenues', _trierParVotes, () => _changerTri(true),
+                icon: Icons.thumb_up_alt_outlined),
+            if (_categories.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(height: 24, width: 1, color: AppColors.border),
+              const SizedBox(width: 8),
+              _chip(
+                nomCategorie ?? 'Toutes catégories',
+                _categorieId != null,
+                _choisirCategorie,
+                icon: Icons.tune_rounded,
+              ),
             ],
-            selected: {_trierParVotes},
-            onSelectionChanged: (s) {
-              setState(() => _trierParVotes = s.first);
-              _load();
-            },
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String label, bool selected, VoidCallback onTap, {IconData? icon}) {
+    return ChoiceChip(
+      selected: selected,
+      onSelected: (_) => onTap(),
+      avatar: icon == null
+          ? null
+          : Icon(icon, size: 16, color: selected ? Colors.white : AppColors.textLabel),
+      label: Text(label),
+      labelStyle: TextStyle(
+        fontSize: 13,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+        color: selected ? Colors.white : AppColors.textLabel,
+      ),
+      selectedColor: AppColors.primary,
+      backgroundColor: AppColors.cardBg,
+      side: BorderSide(color: selected ? AppColors.primary : AppColors.outline),
+    );
+  }
+
+  Future<void> _choisirCategorie() async {
+    final choix = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.7),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  'Filtrer par catégorie',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                ),
+              ),
+              _ligneCategorie(ctx, -1, 'Toutes les catégories', Icons.apps_rounded, _categorieId == null),
+              ..._categories.map((c) {
+                final id = c['idCategorie'] as int;
+                final nom = c['nom'] as String? ?? '—';
+                return _ligneCategorie(ctx, id, nom, iconeCategorie(nom), _categorieId == id);
+              }),
+            ],
           ),
         ),
-        if (_categories.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          DropdownButton<int?>(
-            value: _categorieId,
-            hint: const Text('Catégorie'),
-            underline: const SizedBox(),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Toutes')),
-              ..._categories.map((c) => DropdownMenuItem(
-                    value: c['idCategorie'] as int,
-                    child: Text(c['nom'] as String? ?? '—'),
-                  )),
-            ],
-            onChanged: (v) {
-              setState(() => _categorieId = v);
-              _load();
-            },
-          ),
-        ],
-      ]),
+      ),
     );
+    if (choix == null) return;
+    setState(() => _categorieId = choix == -1 ? null : choix);
+    _load();
+  }
+
+  Widget _ligneCategorie(BuildContext ctx, int id, String nom, IconData icon, bool selected) {
+    return ListTile(
+      onTap: () => Navigator.pop(ctx, id),
+      leading: Icon(icon, color: selected ? AppColors.primaryLight : AppColors.textSecondary),
+      title: Text(
+        nom,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      trailing: selected ? const Icon(Icons.check_rounded, color: AppColors.primaryLight) : null,
+    );
+  }
+
+  void _changerTri(bool parVotes) {
+    if (_trierParVotes == parVotes) return;
+    setState(() => _trierParVotes = parVotes);
+    _load();
   }
 
   Widget _buildCorps() {
@@ -267,18 +315,17 @@ class _ReclamationsPubliquesPageState
 
     if (_items.isEmpty) {
       return const EmptyStateWidget(
-        icon: Icons.public_off_outlined,
-        message: 'Aucune réclamation publique',
-        subtitle: 'Rien à afficher pour ces filtres pour le moment.',
+        icon: Icons.groups_outlined,
+        message: 'Aucune réclamation à afficher',
+        subtitle: 'Aucun signalement ne correspond à ces filtres pour le moment.',
       );
     }
 
     return RefreshIndicator(
       onRefresh: _load,
-      color: AppColors.accent,
       child: ListView.builder(
         controller: _scrollCtrl,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         itemCount: _items.length + (_chargementPageSuivante ? 1 : 0),
         itemBuilder: (_, i) {
           if (i >= _items.length) {
@@ -293,22 +340,27 @@ class _ReclamationsPubliquesPageState
             );
           }
           final item = _items[i] as Map<String, dynamic>;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ReclamationCard(
-                reclamation: item,
-                onTap: () => _ouvrirFiche(item, i),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10, top: 2),
-                child: VoteBar(
-                  nombreVotes: item['nombreVotes'] as int? ?? 0,
+          final votes = item['nombreVotes'] as int? ?? 0;
+          return ReclamationCard(
+            reclamation: item,
+            onTap: () => _ouvrirFiche(item, i),
+            footer: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    votes == 0
+                        ? 'Soyez le premier à soutenir'
+                        : '$votes citoyen${votes > 1 ? 's' : ''} concerné${votes > 1 ? 's' : ''}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                  ),
+                ),
+                VoteBar(
+                  nombreVotes: votes,
                   aVote: item['aVote'] as bool? ?? false,
                   onTap: () => _basculerVote(item, i),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),

@@ -1,7 +1,5 @@
-
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text_styles.dart';
 
 class LoadingWidget extends StatelessWidget {
   const LoadingWidget({super.key, this.message = 'Chargement…'});
@@ -11,14 +9,18 @@ class LoadingWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(
-            color: AppColors.accent,
-            strokeWidth: 2.5,
+          const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              color: AppColors.primaryLight,
+              strokeWidth: 2.5,
+            ),
           ),
-          const SizedBox(height: 16),
-          Text(message, style: AppTextStyles.bodySm),
+          const SizedBox(height: 14),
+          Text(message, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
         ],
       ),
     );

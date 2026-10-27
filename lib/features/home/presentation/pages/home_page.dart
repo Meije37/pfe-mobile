@@ -4,14 +4,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/dio_client.dart';
+import '../../../../core/network/notification_socket_service.dart';
+import '../../../../core/network/offline_cache_service.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/brand.dart';
+import '../../../../core/widgets/offline_banner.dart';
 import '../../../../shared/widgets/empty_state_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
 import '../../../../shared/widgets/reclamation_card.dart';
-import '../../../../core/network/offline_cache_service.dart';
-import '../../../../core/widgets/offline_banner.dart';
 import '../../../notification/presentation/widgets/notification_bell_icon.dart';
+import '../../../profile/data/datasources/profil_remote_datasource.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -24,6 +26,8 @@ class _HomePageState extends State<HomePage> {
   static const _storage = FlutterSecureStorage();
 
   String _email    = '';
+  String _prenom   = '';
+  String _nomComplet = '';
   String _initials = '';
   Map<String, dynamic>? _stats;
   List<dynamic> _reclamations = [];
@@ -46,12 +50,31 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadUserInfo() async {
     final email = await _storage.read(key: AppConstants.emailKey) ?? '';
+    if (!mounted) return;
     setState(() {
       _email    = email;
       _initials = email.length >= 2
           ? email.substring(0, 2).toUpperCase()
           : email.toUpperCase();
     });
+
+    // Prénom et nom pour un accueil personnalisé (« Bonjour, Khady »).
+    // Facultatif : en cas d'échec, l'écran reste sur l'e-mail.
+    try {
+      final profil = await ProfilRemoteDataSource().obtenirProfil();
+      final prenom = (profil['prenom'] as String? ?? '').trim();
+      final nom    = (profil['nom'] as String? ?? '').trim();
+      if (!mounted) return;
+      setState(() {
+        _prenom     = prenom;
+        _nomComplet = '$prenom $nom'.trim();
+        if (prenom.isNotEmpty || nom.isNotEmpty) {
+          _initials = '${prenom.isNotEmpty ? prenom[0] : ''}'
+                  '${nom.isNotEmpty ? nom[0] : ''}'
+              .toUpperCase();
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadStats() async {
@@ -59,6 +82,7 @@ class _HomePageState extends State<HomePage> {
       final r = await DioClient.instance.dio.get(AppConstants.citoyenStats);
       final data = r.data as Map<String, dynamic>;
       await OfflineCacheService.instance.save(CacheKeys.statsCitoyen, data);
+      if (!mounted) return;
       setState(() {
         _stats        = data;
         _loadingStats = false;
@@ -68,11 +92,12 @@ class _HomePageState extends State<HomePage> {
       // Pas de réseau (ou serveur injoignable) : on retombe sur la dernière
       // version connue en cache, si elle existe.
       final cached = await OfflineCacheService.instance.load(CacheKeys.statsCitoyen);
+      if (!mounted) return;
       setState(() {
         _loadingStats = false;
         if (cached != null) {
-          _stats         = cached.data;
-          _horsLigne     = true;
+          _stats          = cached.data;
+          _horsLigne      = true;
           _derniereSyncOK = cached.syncedAt;
         }
       });
@@ -89,6 +114,7 @@ class _HomePageState extends State<HomePage> {
       final list = data['content'] as List<dynamic>;
       await OfflineCacheService.instance
           .save(CacheKeys.derniereReclamations, {'content': list});
+      if (!mounted) return;
       setState(() {
         _reclamations = list;
         _loadingRecs  = false;
@@ -97,6 +123,7 @@ class _HomePageState extends State<HomePage> {
     } catch (_) {
       final cached = await OfflineCacheService.instance
           .load(CacheKeys.derniereReclamations);
+      if (!mounted) return;
       setState(() {
         _loadingRecs = false;
         if (cached != null) {
@@ -111,29 +138,24 @@ class _HomePageState extends State<HomePage> {
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.primary,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppConstants.radiusCard)),
-        title: Text('Se déconnecter ?',
-            style: AppTextStyles.h3.copyWith(color: Colors.white)),
-        content: Text('Vous serez redirigé vers la connexion.',
-            style: AppTextStyles.bodySm.copyWith(
-                color: AppColors.sidebarText)),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Se déconnecter ?'),
+        content: const Text('Vous devrez saisir à nouveau vos identifiants pour accéder à votre espace.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler',
-                style: TextStyle(color: AppColors.accent)),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Déconnecter'),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Se déconnecter'),
           ),
         ],
       ),
     );
     if (confirm == true) {
+      NotificationSocketService.instance.deconnecter();
       await _storage.deleteAll();
       if (mounted) context.go('/login');
     }
@@ -144,7 +166,7 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(children: [
-        _buildHeader(),
+        const OfficialHeader(actions: [NotificationBellIcon()]),
         if (_horsLigne) OfflineBanner(syncedAt: _derniereSyncOK),
         Expanded(
           child: IndexedStack(
@@ -156,541 +178,501 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
-        _buildBottomNav(),
       ]),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedTab,
+        onDestinationSelected: (i) => setState(() => _selectedTab = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Accueil',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.description_outlined),
+            selectedIcon: Icon(Icons.description_rounded),
+            label: 'Réclamations',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded),
+            label: 'Profil',
+          ),
+        ],
+      ),
     );
   }
 
-  // ── Header ─────────────────────────────────────────────────────────────
-  Widget _buildHeader() {
-    return Container(
-      color: AppColors.primaryDark,
-      padding: const EdgeInsets.fromLTRB(20, 48, 20, 20),
-      child: Row(children: [
-        // Avatar
-        Container(
-          width: 42, height: 42,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.accent.withOpacity(0.2),
-            border: Border.all(
-                color: AppColors.accent.withOpacity(0.4), width: 1.5),
-          ),
-          child: Center(
-            child: Text(_initials,
-                style: const TextStyle(
-                  color: AppColors.accent,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                )),
-          ),
-        ),
-        const SizedBox(width: 14),
-
-        // Email
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Bonjour 👋',
-                  style: AppTextStyles.bodySm.copyWith(
-                      color: AppColors.sidebarText)),
-              Text(
-                _email.isEmpty ? 'Citoyen' : _email,
-                style: AppTextStyles.h3.copyWith(
-                    color: Colors.white, fontSize: 14),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-
-        // Notifications
-        const NotificationBellIcon(),
-
-        // Déconnexion
-        IconButton(
-          onPressed: _logout,
-          icon: const Icon(Icons.logout,
-              color: AppColors.sidebarText, size: 20),
-          tooltip: 'Se déconnecter',
-        ),
-      ]),
-    );
-  }
-
-  // ── TAB 0 : Dashboard ─────────────────────────────────────────────────
+  // ── TAB 0 : Accueil ───────────────────────────────────────────────────
   Widget _buildDashboardTab() {
     return RefreshIndicator(
       onRefresh: () async {
         await _loadStats();
         await _loadReclamations();
       },
-      color: AppColors.accent,
-      child: SingleChildScrollView(
+      child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(AppConstants.paddingPage),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Stats
-            if (_loadingStats)
-              const LoadingWidget(message: 'Chargement des stats…')
-            else
-              _buildStatsGrid(),
-            const SizedBox(height: 24),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        children: [
+          // Salutation
+          Text(
+            _prenom.isNotEmpty ? 'Bonjour, $_prenom' : 'Bonjour',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Que souhaitez-vous faire aujourd\'hui ?',
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 20),
 
-            // CTA nouvelle réclamation
-            _buildNewReclamationButton(),
-            const SizedBox(height: 24),
-
-            // Titre section + lien
-            Row(children: [
-              Text('Dernières réclamations', style: AppTextStyles.h3),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => setState(() => _selectedTab = 1),
-                child: Text('Voir tout →',
-                    style: AppTextStyles.bodySm.copyWith(
-                        color: AppColors.primaryLight)),
+          // Deux actions principales
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _ActionTile(
+                  filled: true,
+                  icon: Icons.add_rounded,
+                  title: 'Déposer une réclamation',
+                  subtitle: 'Signaler un problème',
+                  onTap: () => context.go('/home/nouvelle-reclamation'),
+                ),
               ),
-            ]),
-            const SizedBox(height: 12),
-
-            // Liste récente
-            if (_loadingRecs)
-              const LoadingWidget()
-            else if (_reclamations.isEmpty)
-              EmptyStateWidget(
-                message: 'Aucune réclamation',
-                subtitle: 'Déposez votre première réclamation',
-                actionLabel: 'Nouvelle réclamation',
-                onAction: () =>
-                    context.go('/home/nouvelle-reclamation'),
-              )
-            else
-              Column(
-                children: _reclamations
-                    .map((r) => ReclamationCard(
-                          reclamation: r as Map<String, dynamic>,
-                          onTap: () => context
-                              .go('/home/reclamations/${r['id']}'),
-                        ))
-                    .toList(),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Stats grid 2x2 ───────────────────────────────────────────────────
-  Widget _buildStatsGrid() {
-    final items = [
-      (
-        label: 'Total',
-        value: '${_stats?['total'] ?? 0}',
-        icon: Icons.file_copy_outlined,
-        color: AppColors.primaryLight,
-        bg: AppColors.primaryLight.withOpacity(0.1),
-      ),
-      (
-        label: 'Ouvertes',
-        value: '${_stats?['ouvertes'] ?? 0}',
-        icon: Icons.folder_open_outlined,
-        color: AppColors.info,
-        bg: AppColors.badgeOuverteBg,
-      ),
-      (
-        label: 'En cours',
-        value: '${_stats?['enCours'] ?? 0}',
-        icon: Icons.autorenew,
-        color: AppColors.warning,
-        bg: AppColors.badgeEnCoursBg,
-      ),
-      (
-        label: 'Résolues',
-        value: '${_stats?['resolues'] ?? 0}',
-        icon: Icons.check_circle_outline,
-        color: AppColors.success,
-        bg: AppColors.badgeResolieBg,
-      ),
-    ];
-
-    return GridView.count(
-      crossAxisCount: 2,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 1.65,
-      children: items.map((s) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-            border: Border.all(color: AppColors.border),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _ActionTile(
+                  icon: Icons.search_rounded,
+                  title: 'Suivre une réclamation',
+                  subtitle: 'Avec votre référence',
+                  onTap: () => context.go('/home/reclamations'),
+                ),
               ),
             ],
           ),
-          padding: const EdgeInsets.all(14),
-          child: Row(children: [
-            Container(
-              width: 38, height: 38,
-              decoration: BoxDecoration(
-                color: s.bg,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(s.icon, color: s.color, size: 20),
+          const SizedBox(height: 20),
+
+          // Compteurs
+          SectionCard(
+            title: 'Mes réclamations',
+            trailing: _LienTexte(
+              label: 'Tout voir',
+              onTap: () => context.go('/home/reclamations'),
             ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(s.value,
-                    style: AppTextStyles.h2.copyWith(fontSize: 22)),
-                Text(s.label, style: AppTextStyles.labelCaps),
-              ],
-            ),
-          ]),
-        );
-      }).toList(),
+            child: _loadingStats
+                ? const SizedBox(
+                    height: 56,
+                    child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+                  )
+                : _buildStats(),
+          ),
+          const SizedBox(height: 12),
+
+          // Réclamations publiques
+          _LigneNavigation(
+            icon: Icons.groups_outlined,
+            title: 'Réclamations de mon quartier',
+            subtitle: 'Consultez et soutenez les signalements publics',
+            onTap: () => context.go('/home/reclamations-publiques'),
+          ),
+          const SizedBox(height: 24),
+
+          // Dernières réclamations
+          const Text(
+            'Dernières réclamations',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 10),
+          if (_loadingRecs)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: LoadingWidget(),
+            )
+          else if (_reclamations.isEmpty)
+            EmptyStateWidget(
+              message: 'Aucune réclamation pour l\'instant',
+              subtitle: 'Signalez un problème dans votre quartier : nous le transmettons au service compétent.',
+              actionLabel: 'Déposer une réclamation',
+              onAction: () => context.go('/home/nouvelle-reclamation'),
+            )
+          else
+            ..._reclamations.map((r) => ReclamationCard(
+                  reclamation: r as Map<String, dynamic>,
+                  onTap: () => context.go('/home/reclamations/${r['id']}'),
+                )),
+        ],
+      ),
     );
   }
 
-  // ── CTA nouvelle réclamation ─────────────────────────────────────────
-  Widget _buildNewReclamationButton() {
-    return GestureDetector(
-      onTap: () => context.go('/home/nouvelle-reclamation'),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.primaryDark, AppColors.primary],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-          border: Border.all(color: AppColors.accent.withOpacity(0.3)),
-        ),
-        child: Row(children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
+  Widget _buildStats() {
+    final items = [
+      ('Total',    '${_stats?['total'] ?? 0}',    AppColors.textPrimary),
+      ('Ouvertes', '${_stats?['ouvertes'] ?? 0}', AppColors.info),
+      ('En cours', '${_stats?['enCours'] ?? 0}',  AppColors.warning),
+      ('Résolues', '${_stats?['resolues'] ?? 0}', AppColors.success),
+    ];
+
+    return IntrinsicHeight(
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const VerticalDivider(width: 1, thickness: 1, color: AppColors.border),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      items[i].$2,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: items[i].$3,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      items[i].$1,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: const Icon(Icons.add_circle_outline,
-                color: AppColors.accent, size: 26),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Déposer une réclamation',
-                    style: AppTextStyles.h3.copyWith(
-                        color: Colors.white, fontSize: 15)),
-                const SizedBox(height: 2),
-                Text('Signalez un problème dans votre quartier',
-                    style: AppTextStyles.bodySm.copyWith(
-                        color: AppColors.sidebarText)),
-              ],
-            ),
-          ),
-          const Icon(Icons.arrow_forward_ios,
-              color: AppColors.accent, size: 16),
-        ]),
+          ],
+        ],
       ),
     );
   }
 
   // ── TAB 1 : Réclamations ─────────────────────────────────────────────
   Widget _buildReclamationsTab() {
-    return Column(children: [
-      // Sous-titre + bouton
-      Container(
-        color: Colors.white,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Row(children: [
-          Text('Toutes mes réclamations', style: AppTextStyles.h3),
-          const Spacer(),
-          GestureDetector(
-            onTap: () => context.go('/home/reclamations'),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(8),
+    return RefreshIndicator(
+      onRefresh: _loadReclamations,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Mes réclamations',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Les 5 plus récentes',
+                      style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
               ),
-              child: Text('Filtrer',
-                  style: AppTextStyles.labelCaps.copyWith(
-                      color: Colors.white, fontSize: 11)),
-            ),
+              FilledButton.icon(
+                onPressed: () => context.go('/home/nouvelle-reclamation'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  backgroundColor: AppColors.primaryLight,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Nouvelle'),
+              ),
+            ],
           ),
-        ]),
+          const SizedBox(height: 16),
+          if (_loadingRecs)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: LoadingWidget(),
+            )
+          else if (_reclamations.isEmpty)
+            EmptyStateWidget(
+              message: 'Aucune réclamation',
+              subtitle: 'Déposez votre première réclamation.',
+              actionLabel: 'Déposer une réclamation',
+              onAction: () => context.go('/home/nouvelle-reclamation'),
+            )
+          else
+            ..._reclamations.map((r) => ReclamationCard(
+                  reclamation: r as Map<String, dynamic>,
+                  onTap: () => context.go('/home/reclamations/${r['id']}'),
+                )),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/home/reclamations'),
+            icon: const Icon(Icons.filter_list_rounded, size: 18),
+            label: const Text('Voir toutes, rechercher et filtrer'),
+          ),
+        ],
       ),
+    );
+  }
 
-      // Liste
-      Expanded(
-        child: _loadingRecs
-            ? const LoadingWidget()
-            : _reclamations.isEmpty
-                ? EmptyStateWidget(
-                    message: 'Aucune réclamation',
-                    subtitle: 'Déposez votre première réclamation',
-                    actionLabel: 'Nouvelle réclamation',
-                    onAction: () =>
-                        context.go('/home/nouvelle-reclamation'),
-                  )
-                : RefreshIndicator(
-                    onRefresh: _loadReclamations,
-                    color: AppColors.accent,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(
-                          AppConstants.paddingPage),
-                      itemCount: _reclamations.length,
-                      itemBuilder: (_, i) => ReclamationCard(
-                        reclamation:
-                            _reclamations[i] as Map<String, dynamic>,
-                        onTap: () => context.go(
-                            '/home/reclamations/${_reclamations[i]['id']}'),
+  // ── TAB 2 : Profil ───────────────────────────────────────────────────
+  Widget _buildProfileTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+      children: [
+        // Identité
+        SectionCard(
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primaryDark,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  _initials,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _nomComplet.isNotEmpty ? _nomComplet : _email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _email,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Compte citoyen',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
                       ),
                     ),
-                  ),
-      ),
-
-      // Bouton voir toutes
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: SizedBox(
-          width: double.infinity,
-          height: 44,
-          child: OutlinedButton.icon(
-            onPressed: () => context.go('/home/reclamations'),
-            icon: const Icon(Icons.list_alt, size: 18,
-                color: AppColors.primary),
-            label: const Text('Voir toutes mes réclamations',
-                style: TextStyle(color: AppColors.primary)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.primary),
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-      ),
-    ]);
-  }
-
-  // ── TAB 2 : Profil (inline dans le home) ─────────────────────────────
-  Widget _buildProfileTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppConstants.paddingPage),
-      child: Column(children: [
-        const SizedBox(height: 20),
-
-        // Avatar
-        Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.accent.withOpacity(0.15),
-            border: Border.all(
-                color: AppColors.accent.withOpacity(0.4), width: 2),
-          ),
-          child: Center(
-            child: Text(_initials,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.accent,
-                )),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(_email,
-            style: AppTextStyles.h3.copyWith(fontSize: 16)),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 14, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.badgeOuverteBg,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text('CITOYEN',
-              style: AppTextStyles.labelCaps.copyWith(
-                  color: AppColors.badgeOuverteText, fontSize: 11)),
-        ),
-        const SizedBox(height: 28),
-
-        // Infos
-        _profileCard(children: [
-          _profileRow(Icons.email_outlined, 'Email', _email),
-          const Divider(height: 0, indent: 16, endIndent: 16),
-          _profileRow(Icons.shield_outlined, 'Rôle', 'Citoyen'),
-          const Divider(height: 0, indent: 16, endIndent: 16),
-          _profileRow(Icons.info_outline, 'Version', 'v1.0.0 — PFE 2025'),
-        ]),
         const SizedBox(height: 16),
 
-        // Actions rapides
-        _profileCard(children: [
-          ListTile(
-            leading: const Icon(Icons.add_circle_outline,
-                color: AppColors.success),
-            title: Text('Nouvelle réclamation',
-                style: AppTextStyles.body),
-            trailing: const Icon(Icons.chevron_right,
-                color: AppColors.textMuted, size: 20),
-            onTap: () => context.go('/home/nouvelle-reclamation'),
+        // Raccourcis
+        SectionCard(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              _ligneMenu(Icons.person_outline_rounded, 'Mes informations personnelles',
+                  () => context.go('/home/profile')),
+              const Divider(height: 1, indent: 52),
+              _ligneMenu(Icons.description_outlined, 'Toutes mes réclamations',
+                  () => context.go('/home/reclamations')),
+              const Divider(height: 1, indent: 52),
+              _ligneMenu(Icons.groups_outlined, 'Réclamations de mon quartier',
+                  () => context.go('/home/reclamations-publiques')),
+            ],
           ),
-          const Divider(height: 0, indent: 16, endIndent: 16),
-          ListTile(
-            leading: const Icon(Icons.history_outlined,
-                color: AppColors.primaryLight),
-            title: Text('Toutes mes réclamations',
-                style: AppTextStyles.body),
-            trailing: const Icon(Icons.chevron_right,
-                color: AppColors.textMuted, size: 20),
-            onTap: () => context.go('/home/reclamations'),
-          ),
-          const Divider(height: 0, indent: 16, endIndent: 16),
-          ListTile(
-            leading: const Icon(Icons.person_outline,
-                color: AppColors.primaryLight),
-            title: Text('Détail du profil',
-                style: AppTextStyles.body),
-            trailing: const Icon(Icons.chevron_right,
-                color: AppColors.textMuted, size: 20),
-            onTap: () => context.go('/home/profile'),
-          ),
-        ]),
+        ),
         const SizedBox(height: 16),
 
-        // Déconnexion
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: OutlinedButton.icon(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout,
-                color: AppColors.danger, size: 18),
-            label: const Text('Se déconnecter',
-                style: TextStyle(color: AppColors.danger)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.danger),
-            ),
+        OutlinedButton.icon(
+          onPressed: _logout,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.danger,
+            side: const BorderSide(color: Color(0xFFFECDCA)),
           ),
+          icon: const Icon(Icons.logout_rounded, size: 18),
+          label: const Text('Se déconnecter'),
         ),
         const SizedBox(height: 24),
-        Text('© 2025 — Projet Master PFE',
-            style: AppTextStyles.labelCaps.copyWith(
-                color: AppColors.textMuted, fontSize: 10)),
-        const SizedBox(height: 20),
-      ]),
-    );
-  }
-
-  Widget _profileCard({required List<Widget> children}) => Container(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-      border: Border.all(color: AppColors.border),
-    ),
-    clipBehavior: Clip.antiAlias,
-    // Material (et non une simple couleur sur le Container) : c'est lui qui
-    // peint le fond ET sert de "toile" aux effets d'encre des ListTile
-    // enfants. Sans ça, les splashs au clic restent invisibles (le
-    // Container/DecoratedBox les masque, comme le signalait le warning
-    // Flutter "ListTile background color or ink splashes may be invisible").
-    child: Material(
-      color: Colors.white,
-      child: Column(children: children),
-    ),
-  );
-
-  Widget _profileRow(IconData icon, String label, String value) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(
-            horizontal: 16, vertical: 14),
-        child: Row(children: [
-          Icon(icon, size: 18, color: AppColors.textMuted),
-          const SizedBox(width: 12),
-          Text(label,
-              style: AppTextStyles.bodySm.copyWith(
-                  color: AppColors.textMuted)),
-          const Spacer(),
-          Flexible(
-            child: Text(value,
-                style: AppTextStyles.bodySm.copyWith(
-                    color: AppColors.textPrimary),
-                textAlign: TextAlign.right,
-                overflow: TextOverflow.ellipsis),
+        const Center(
+          child: Text(
+            '${AppBrand.nom} · version 1.0.0',
+            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
-        ]),
-      );
-
-  // ── Bottom navigation 3 tabs ─────────────────────────────────────────
-  Widget _buildBottomNav() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-            top: BorderSide(color: AppColors.border, width: 0.8)),
-      ),
-      child: Row(children: [
-        _navItem(0, Icons.home_outlined,      Icons.home,      'Accueil'),
-        _navItem(1, Icons.file_copy_outlined, Icons.file_copy, 'Réclamations'),
-        _navItem(2, Icons.person_outline,     Icons.person,    'Profil'),
-      ]),
+        ),
+      ],
     );
   }
 
-  Widget _navItem(
-    int index,
-    IconData iconOutline,
-    IconData iconFilled,
-    String label,
-  ) {
-    final isActive = _selectedTab == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedTab = index),
+  Widget _ligneMenu(IconData icon, String label, VoidCallback onTap) {
+    return ListTile(
+      onTap: onTap,
+      minTileHeight: 56,
+      leading: Icon(icon, color: AppColors.primaryLight, size: 22),
+      title: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+      shape: const RoundedRectangleBorder(),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Grande tuile d'action de l'accueil (« Déposer », « Suivre »).
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.filled = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = filled ? Colors.white : AppColors.textPrimary;
+    return Material(
+      color: filled ? AppColors.primaryLight : AppColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: filled ? BorderSide.none : const BorderSide(color: AppColors.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          color: Colors.transparent,
+          constraints: const BoxConstraints(minHeight: 132),
+          padding: const EdgeInsets.all(16),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                isActive ? iconFilled : iconOutline,
-                color: isActive ? AppColors.accent : AppColors.textMuted,
-                size: 24,
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: filled ? Colors.white.withValues(alpha: 0.14) : AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 22, color: filled ? Colors.white : AppColors.primaryLight),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 14),
               Text(
-                label,
+                title,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.3, color: fg),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isActive
-                      ? FontWeight.w600
-                      : FontWeight.w400,
-                  color: isActive
-                      ? AppColors.accent
-                      : AppColors.textMuted,
+                  fontSize: 12,
+                  color: filled ? const Color(0xFFD1E7DB) : AppColors.textMuted,
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _LigneNavigation extends StatelessWidget {
+  const _LigneNavigation({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.cardBg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 22, color: AppColors.primaryLight),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LienTexte extends StatelessWidget {
+  const _LienTexte({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(label),
     );
   }
 }

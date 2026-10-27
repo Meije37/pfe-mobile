@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/widgets/brand.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../shared/widgets/empty_state_widget.dart';
 import '../../../../shared/widgets/error_state_widget.dart';
 import '../../../../shared/widgets/loading_widget.dart';
@@ -52,7 +52,6 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
   // ── Recherche ─────────────────────────────────────────────────────────
   final _searchCtrl  = TextEditingController();
   final _searchFocus = FocusNode();
-  bool  _searchOpen  = false; // barre visible ou cachée
 
   // ── Statuts disponibles ───────────────────────────────────────────────
   static const _statuts = [
@@ -60,7 +59,7 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
     'REJETEE', 'FERMEE', 'ANNULEE'
   ];
   static const _labels = [
-    'Tous', 'Ouvertes', 'En cours', 'Résolues',
+    'Toutes', 'Ouvertes', 'En cours', 'Résolues',
     'Rejetées', 'Fermées', 'Annulées'
   ];
 
@@ -201,28 +200,9 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
     });
   }
 
-  // ── Toggle barre de recherche ─────────────────────────────────────────
-  void _toggleSearch() {
-    setState(() => _searchOpen = !_searchOpen);
-    if (_searchOpen) {
-      // Ouvre → focus immédiat
-      Future.delayed(
-        const Duration(milliseconds: 100),
-        () => _searchFocus.requestFocus(),
-      );
-    } else {
-      // Ferme → vide la recherche
-      _searchCtrl.clear();
-      _searchFocus.unfocus();
-    }
-  }
-
   // ── Réinitialiser tout ────────────────────────────────────────────────
   void _resetFiltres() {
-    setState(() {
-      _filtreStatut = '';
-      _searchOpen   = false;
-    });
+    setState(() => _filtreStatut = '');
     _searchCtrl.clear();
     _searchFocus.unfocus();
     _appliquerFiltres();
@@ -231,289 +211,128 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
   // ── BUILD ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final total = _all.length;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: _buildAppBar(),
+      appBar: PageAppBar(
+        title: 'Mes réclamations',
+        subtitle: _loading
+            ? 'Chargement…'
+            : '$total réclamation${total > 1 ? 's' : ''} déposée${total > 1 ? 's' : ''}',
+        onBack: () => context.go('/home'),
+        actions: [
+          SquareIconButton(
+            icon: Icons.groups_outlined,
+            tooltip: 'Réclamations de mon quartier',
+            onPressed: () => context.go('/home/reclamations-publiques'),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.go('/home/nouvelle-reclamation'),
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Nouvelle'),
+      ),
       body: Column(children: [
-
-        // ── Barre de recherche animée ─────────────────────────────────
-        _buildSearchBar(),
-
-        // ── Filtres statut ────────────────────────────────────────────
-        _buildFiltresStatut(),
-
+        _buildRechercheEtFiltres(),
         if (_horsLigne) OfflineBanner(syncedAt: _derniereSyncOK),
-
-        // ── Compteur résultats ────────────────────────────────────────
-        if (!_loading)
-          _buildCompteur(),
-
-        // ── Liste ─────────────────────────────────────────────────────
         Expanded(child: _buildListe()),
       ]),
     );
   }
 
-  // ── AppBar avec bouton recherche ──────────────────────────────────────
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: AppColors.primaryDark,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new,
-            color: Colors.white, size: 18),
-        onPressed: () => context.go('/home'),
-      ),
-      title: Text('Mes réclamations',
-          style: AppTextStyles.h3.copyWith(color: Colors.white)),
-      actions: [
-        // ✅ Bouton recherche
-        IconButton(
-          icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: Icon(
-              _searchOpen ? Icons.search_off : Icons.search,
-              key: ValueKey(_searchOpen),
-              color: _searchOpen ? AppColors.accent : Colors.white,
-            ),
-          ),
-          onPressed: _toggleSearch,
-          tooltip: 'Rechercher',
-        ),
-        // Bouton réclamations publiques (voir + soutenir celles des autres)
-        IconButton(
-          icon: const Icon(Icons.public, color: Colors.white),
-          onPressed: () => context.go('/home/reclamations-publiques'),
-          tooltip: 'Réclamations publiques',
-        ),
-        // Bouton nouvelle réclamation
-        IconButton(
-          icon: const Icon(Icons.add_circle_outline,
-              color: AppColors.accent),
-          onPressed: () => context.go('/home/nouvelle-reclamation'),
-          tooltip: 'Nouvelle réclamation',
-        ),
-      ],
-    );
-  }
+  // ── Recherche + filtres (bloc blanc sous la barre) ─────────────────────
+  Widget _buildRechercheEtFiltres() {
+    final hasFiltre = _filtreStatut.isNotEmpty || _recherche.isNotEmpty;
 
-  // ── Barre de recherche animée ─────────────────────────────────────────
-  Widget _buildSearchBar() {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
-      height: _searchOpen ? 64 : 0,
-      color: AppColors.primaryDark,
-      child: _searchOpen
-          ? Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Row(children: [
-                // Champ de recherche
-                Expanded(
-                  child: Container(
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: AppColors.accent.withOpacity(0.3),
-                      ),
-                    ),
-                    child: TextField(
-                      controller:  _searchCtrl,
-                      focusNode:   _searchFocus,
-                      style: AppTextStyles.body.copyWith(
-                          color: Colors.white),
-                      cursorColor: AppColors.accent,
-                      textInputAction: TextInputAction.search,
-                      decoration: InputDecoration(
-                        hintText: 'Titre, référence, catégorie…',
-                        hintStyle: AppTextStyles.bodySm.copyWith(
-                          color: AppColors.textMuted,
-                        ),
-                        prefixIcon: const Icon(Icons.search,
-                            color: AppColors.textMuted, size: 18),
-                        // Bouton effacer
-                        suffixIcon: _recherche.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear,
-                                    color: AppColors.textMuted,
-                                    size: 18),
-                                onPressed: () {
-                                  _searchCtrl.clear();
-                                  _searchFocus.requestFocus();
-                                },
-                              )
-                            : null,
-                        border:         InputBorder.none,
-                        enabledBorder:  InputBorder.none,
-                        focusedBorder:  InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                            vertical: 10),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Bouton annuler
-                GestureDetector(
-                  onTap: _toggleSearch,
-                  child: Text('Annuler',
-                      style: AppTextStyles.bodySm.copyWith(
-                        color: AppColors.accent,
-                        fontWeight: FontWeight.w500,
-                      )),
-                ),
-              ]),
-            )
-          : const SizedBox.shrink(),
-    );
-  }
-
-  // ── Filtres statut horizontaux ────────────────────────────────────────
-  Widget _buildFiltresStatut() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          children: List.generate(_statuts.length, (i) {
-            final selected = _filtreStatut == _statuts[i];
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () {
-                  setState(() => _filtreStatut = _statuts[i]);
-                  _appliquerFiltres();
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? AppColors.primary
-                        : AppColors.background,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: selected
-                          ? AppColors.primary
-                          : AppColors.border,
-                    ),
-                  ),
-                  child: Text(
-                    _labels[i],
-                    style: AppTextStyles.labelCaps.copyWith(
-                      color: selected
-                          ? Colors.white
-                          : AppColors.textSecondary,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-      ),
-    );
-  }
-
-  // ── Compteur résultats ────────────────────────────────────────────────
-  Widget _buildCompteur() {
-    final hasFiltre   = _filtreStatut.isNotEmpty;
-    final hasRecherche = _recherche.isNotEmpty;
-    final count       = _filtered.length;
+    int compte(String statut) => statut.isEmpty
+        ? _all.length
+        : _all.where((r) => (r as Map)['statut'] == statut).length;
 
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Row(children: [
-
-        // Nombre de résultats
-        Text(
-          '$count réclamation${count > 1 ? 's' : ''}',
-          style: AppTextStyles.bodySm.copyWith(
-            color: AppColors.textMuted,
-          ),
-        ),
-
-        // Tags filtres actifs
-        if (hasRecherche) ...[
-          const SizedBox(width: 8),
-          _activeFiltreTag(
-            label: '"$_recherche"',
-            icon:  Icons.search,
-            onRemove: () {
-              _searchCtrl.clear();
-              _appliquerFiltres();
-            },
-          ),
-        ],
-
-        if (hasFiltre) ...[
-          const SizedBox(width: 6),
-          _activeFiltreTag(
-            label: _filtreStatut,
-            icon:  Icons.filter_list,
-            onRemove: () {
-              setState(() => _filtreStatut = '');
-              _appliquerFiltres();
-            },
-          ),
-        ],
-
-        const Spacer(),
-
-        // Bouton reset si filtres actifs
-        if (hasFiltre || hasRecherche)
-          GestureDetector(
-            onTap: _resetFiltres,
-            child: Text(
-              'Réinitialiser',
-              style: AppTextStyles.labelCaps.copyWith(
-                color: AppColors.danger,
-                fontSize: 10,
-              ),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  // Tag filtre actif (badge avec bouton supprimer)
-  Widget _activeFiltreTag({
-    required String label,
-    required IconData icon,
-    required VoidCallback onRemove,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.primaryLight.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: AppColors.primaryLight.withOpacity(0.3),
-        ),
+      decoration: const BoxDecoration(
+        color: AppColors.cardBg,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.fromLTRB(16, 12, 0, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 10, color: AppColors.primaryLight),
-          const SizedBox(width: 4),
-          Text(label,
-              style: AppTextStyles.labelCaps.copyWith(
-                color: AppColors.primaryLight,
-                fontSize: 9,
-              )),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: onRemove,
-            child: Icon(Icons.close,
-                size: 10, color: AppColors.primaryLight),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: TextField(
+              controller: _searchCtrl,
+              focusNode: _searchFocus,
+              textInputAction: TextInputAction.search,
+              onTapOutside: (_) => _searchFocus.unfocus(),
+              style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Référence, titre, catégorie, ville…',
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: _recherche.isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Effacer la recherche',
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          _searchFocus.unfocus();
+                        },
+                      )
+                    : null,
+              ),
+            ),
           ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              children: List.generate(_statuts.length, (i) {
+                final selected = _filtreStatut == _statuts[i];
+                final n = compte(_statuts[i]);
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    selected: selected,
+                    onSelected: (_) {
+                      setState(() => _filtreStatut = _statuts[i]);
+                      _appliquerFiltres();
+                    },
+                    label: Text('${_labels[i]} · $n'),
+                    labelStyle: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: selected ? Colors.white : AppColors.textLabel,
+                    ),
+                    selectedColor: AppColors.primary,
+                    backgroundColor: AppColors.cardBg,
+                    side: BorderSide(color: selected ? AppColors.primary : AppColors.outline),
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                  ),
+                );
+              }),
+            ),
+          ),
+          if (hasFiltre && !_loading)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, right: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_filtered.length} résultat${_filtered.length > 1 ? 's' : ''}',
+                      style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _resetFiltres,
+                    child: const Text('Réinitialiser les filtres'),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -528,12 +347,11 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
     }
 
     if (_filtered.isEmpty) {
-      // Empty state selon le contexte
       if (_recherche.isNotEmpty) {
         return EmptyStateWidget(
-          icon:     Icons.search_off,
+          icon:     Icons.search_off_rounded,
           message:  'Aucun résultat',
-          subtitle: 'Aucune réclamation trouvée pour "$_recherche"',
+          subtitle: 'Aucune réclamation ne correspond à « $_recherche ».',
           actionLabel: 'Effacer la recherche',
           onAction: () {
             _searchCtrl.clear();
@@ -542,10 +360,10 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
         );
       }
       if (_filtreStatut.isNotEmpty) {
+        final libelle = _labels[_statuts.indexOf(_filtreStatut)];
         return EmptyStateWidget(
-          icon:     Icons.filter_list_off,
-          message:  'Aucune réclamation',
-          subtitle: 'Aucune réclamation avec le statut "$_filtreStatut"',
+          icon:     Icons.filter_list_off_rounded,
+          message:  'Aucune réclamation dans « $libelle »',
           actionLabel: 'Voir toutes',
           onAction: () {
             setState(() => _filtreStatut = '');
@@ -555,19 +373,17 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
       }
       return EmptyStateWidget(
         message:     'Aucune réclamation',
-        subtitle:    'Déposez votre première réclamation',
-        actionLabel: 'Nouvelle réclamation',
+        subtitle:    'Signalez un problème dans votre quartier : nous le transmettons au service compétent.',
+        actionLabel: 'Déposer une réclamation',
         onAction:    () => context.go('/home/nouvelle-reclamation'),
       );
     }
 
     return RefreshIndicator(
       onRefresh: _load,
-      color: AppColors.accent,
       child: ListView.builder(
         controller: _scrollCtrl,
-        padding: const EdgeInsets.all(AppConstants.paddingPage),
-        // +1 pour l'indicateur "chargement de la page suivante" en bas
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         itemCount: _filtered.length + (_chargementPageSuivante ? 1 : 0),
         itemBuilder: (_, i) {
           if (i >= _filtered.length) {
@@ -584,10 +400,7 @@ class _ReclamationsListPageState extends State<ReclamationsListPage> {
           final rec = _filtered[i] as Map<String, dynamic>;
           return ReclamationCard(
             reclamation: rec,
-            onTap: () => context.go(
-              '/home/reclamations/${rec['id']}',
-            ),
-            // ✅ Passe le terme recherché pour surligner
+            onTap: () => context.go('/home/reclamations/${rec['id']}'),
             searchQuery: _recherche,
           );
         },

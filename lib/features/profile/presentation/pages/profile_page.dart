@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/brand.dart';
 import '../../../../core/network/notification_socket_service.dart';
 import '../../data/datasources/profil_remote_datasource.dart';
 
@@ -65,24 +65,18 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _logout() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.primary,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppConstants.radiusCard)),
-        title: Text('Se déconnecter ?',
-            style: AppTextStyles.h3.copyWith(color: Colors.white)),
-        content: Text('Vous serez redirigé vers la page de connexion.',
-            style: AppTextStyles.bodySm.copyWith(
-                color: AppColors.sidebarText)),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Se déconnecter ?'),
+        content: const Text('Vous devrez saisir à nouveau vos identifiants pour accéder à votre espace.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler',
-                style: TextStyle(color: AppColors.accent)),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Déconnecter'),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Se déconnecter'),
           ),
         ],
       ),
@@ -97,166 +91,150 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final nomComplet = '$_prenom $_nom'.trim();
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.primaryDark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new,
-              color: Colors.white, size: 18),
-          onPressed: () => context.go('/home'),
-        ),
-        title: Text('Mon profil',
-            style: AppTextStyles.h3.copyWith(color: Colors.white)),
+      appBar: PageAppBar(
+        title: 'Mon profil',
+        onBack: () => context.go('/home'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppConstants.paddingPage),
-        child: Column(children: [
-
-          // ── Avatar ───────────────────────────────────────────────────
-          const SizedBox(height: 20),
-          Container(
-            width: 88, height: 88,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.accent.withOpacity(0.15),
-              border: Border.all(
-                  color: AppColors.accent.withOpacity(0.4), width: 2),
-            ),
-            child: Center(
-              child: Text(_initials,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.accent,
-                  )),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+        children: [
+          // ── Identité ─────────────────────────────────────────────────
+          SectionCard(
+            child: Row(
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primaryDark,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _initials,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nomComplet.isEmpty ? _email : nomComplet,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primarySoft,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          _role == AppConstants.roleCitoyen ? 'Compte citoyen' : _role,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 14),
-          Text(_email,
-              style: AppTextStyles.h3.copyWith(
-                color: AppColors.textPrimary, fontSize: 16)),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.badgeOuverteBg,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(_role,
-                style: AppTextStyles.labelCaps.copyWith(
-                  color: AppColors.badgeOuverteText, fontSize: 11)),
-          ),
-          const SizedBox(height: 32),
-
-          // ── Infos ─────────────────────────────────────────────────────
-          _card(children: [
-            _row(Icons.badge_outlined, 'Nom complet',
-                (_prenom.isEmpty && _nom.isEmpty) ? '—' : '$_prenom $_nom'),
-            _divider(),
-            _row(Icons.phone_outlined, 'Téléphone',
-                _telephone.isEmpty ? '—' : _telephone),
-            _divider(),
-            _row(Icons.email_outlined, 'Email', _email),
-            _divider(),
-            _row(Icons.shield_outlined, 'Rôle', _role),
-            _divider(),
-            _row(Icons.phone_android, 'Application', 'v1.0.0 — PFE 2025'),
-          ]),
           const SizedBox(height: 16),
 
-          // ── Actions ────────────────────────────────────────────────────
-          _card(children: [
-            ListTile(
-              leading: const Icon(Icons.edit_outlined,
-                  color: AppColors.primaryLight),
-              title: Text('Modifier mon profil',
-                  style: AppTextStyles.body),
-              trailing: const Icon(Icons.chevron_right,
-                  color: AppColors.textMuted, size: 20),
-              onTap: () async {
-                await context.push('/home/profile/modifier');
-                _loadUser(); // rafraîchit nom/email affichés après retour
-              },
-            ),
-            _divider(),
-            ListTile(
-              leading: const Icon(Icons.history_outlined,
-                  color: AppColors.primaryLight),
-              title: Text('Mes réclamations',
-                  style: AppTextStyles.body),
-              trailing: const Icon(Icons.chevron_right,
-                  color: AppColors.textMuted, size: 20),
-              onTap: () => context.go('/home/reclamations'),
-            ),
-            _divider(),
-            ListTile(
-              leading: const Icon(Icons.add_circle_outline,
-                  color: AppColors.success),
-              title: Text('Nouvelle réclamation',
-                  style: AppTextStyles.body),
-              trailing: const Icon(Icons.chevron_right,
-                  color: AppColors.textMuted, size: 20),
-              onTap: () => context.go('/home/nouvelle-reclamation'),
-            ),
-          ]),
-          const SizedBox(height: 16),
-
-          // ── Déconnexion ───────────────────────────────────────────────
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed: _logout,
-              icon: const Icon(Icons.logout,
-                  color: AppColors.danger, size: 18),
-              label: const Text('Se déconnecter',
-                  style: TextStyle(color: AppColors.danger)),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.danger),
+          // ── Coordonnées ──────────────────────────────────────────────
+          SectionCard(
+            title: 'Mes coordonnées',
+            icon: Icons.contact_mail_outlined,
+            trailing: TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
+              onPressed: _modifier,
+              child: const Text('Modifier'),
+            ),
+            child: Column(children: [
+              _row('Nom complet', nomComplet.isEmpty ? '—' : nomComplet),
+              _divider(),
+              _row('Téléphone', _telephone.isEmpty ? '—' : _telephone),
+              _divider(),
+              _row('Adresse e-mail', _email),
+            ]),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Raccourcis ───────────────────────────────────────────────
+          SectionCard(
+            padding: EdgeInsets.zero,
+            child: Column(children: [
+              _lien(Icons.lock_outline_rounded, 'Modifier mon mot de passe', _modifier),
+              const Divider(height: 1, indent: 52),
+              _lien(Icons.description_outlined, 'Mes réclamations', () => context.go('/home/reclamations')),
+              const Divider(height: 1, indent: 52),
+              _lien(Icons.add_circle_outline_rounded, 'Déposer une réclamation', () => context.go('/home/nouvelle-reclamation')),
+            ]),
+          ),
+          const SizedBox(height: 16),
+
+          OutlinedButton.icon(
+            onPressed: _logout,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.danger,
+              side: const BorderSide(color: Color(0xFFFECDCA)),
+            ),
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            label: const Text('Se déconnecter'),
+          ),
+          const SizedBox(height: 24),
+          const Center(
+            child: Text(
+              '${AppBrand.nom} · version 1.0.0',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
           ),
-          const SizedBox(height: 32),
-          Text('© 2025 — Projet Master PFE',
-              style: AppTextStyles.labelCaps.copyWith(
-                color: AppColors.textMuted, fontSize: 10)),
-          const SizedBox(height: 20),
-        ]),
+        ],
       ),
     );
   }
 
-  Widget _card({required List<Widget> children}) => Container(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(AppConstants.radiusCard),
-      border: Border.all(color: AppColors.border),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Material(
-      color: Colors.white,
-      child: Column(children: children),
-    ),
-  );
+  Future<void> _modifier() async {
+    await context.push('/home/profile/modifier');
+    _loadUser(); // rafraîchit les informations après retour
+  }
 
-  Widget _row(IconData icon, String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+  Widget _row(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
     child: Row(children: [
-      Icon(icon, size: 18, color: AppColors.textMuted),
+      Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
       const SizedBox(width: 12),
-      Text(label, style: AppTextStyles.bodySm.copyWith(
-          color: AppColors.textMuted)),
-      const Spacer(),
-      Flexible(
-        child: Text(value,
-            style: AppTextStyles.bodySm.copyWith(
-              color: AppColors.textPrimary,
-            ),
-            textAlign: TextAlign.right,
-            overflow: TextOverflow.ellipsis),
+      Expanded(
+        child: Text(
+          value,
+          textAlign: TextAlign.right,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
+        ),
       ),
     ]),
   );
 
-  Widget _divider() => const Divider(height: 0, indent: 16, endIndent: 16);
+  Widget _lien(IconData icon, String label, VoidCallback onTap) => ListTile(
+    onTap: onTap,
+    minTileHeight: 56,
+    leading: Icon(icon, color: AppColors.primaryLight, size: 22),
+    title: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+    trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+    shape: const RoundedRectangleBorder(),
+  );
+
+  Widget _divider() => const Divider(height: 1);
 }

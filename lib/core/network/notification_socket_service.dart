@@ -1,6 +1,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 // ✅ À la place
@@ -43,9 +44,9 @@ class NotificationSocketService {
         stompConnectHeaders: {'Authorization': 'Bearer $token'},
         webSocketConnectHeaders: {'Authorization': 'Bearer $token'},
         onWebSocketError: (dynamic error) =>
-            print('[STOMP] Erreur WebSocket: $error'),
+            debugPrint('[STOMP] Erreur WebSocket: $error'),
         onStompError: (StompFrame frame) =>
-            print('[STOMP] Erreur STOMP: ${frame.body}'),
+            debugPrint('[STOMP] Erreur STOMP: ${frame.body}'),
         reconnectDelay: const Duration(seconds: 5),
         heartbeatIncoming: const Duration(seconds: 10),
         heartbeatOutgoing: const Duration(seconds: 10),

@@ -56,7 +56,7 @@ class _ReclamationPhotoWidgetState
           // ── Titre section ───────────────────────────────────────────
           if (widget.showLabel) ...[
             Row(children: [
-              Icon(Icons.photo_outlined,
+              const Icon(Icons.photo_outlined,
                   size: 16, color: AppColors.textMuted),
               const SizedBox(width: 6),
               Text('PHOTO',
@@ -126,7 +126,7 @@ class _ReclamationPhotoWidgetState
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.zoom_in,
+              const Icon(Icons.zoom_in,
                   size: 12, color: AppColors.textMuted),
               const SizedBox(width: 4),
               Text('Appuyez pour agrandir',
@@ -217,7 +217,7 @@ class _ReclamationPhotoWidgetState
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(Icons.broken_image_outlined,
-            color: AppColors.textMuted.withOpacity(0.4), size: 32),
+            color: AppColors.textMuted.withValues(alpha: 0.4), size: 32),
         const SizedBox(height: 8),
         Text('Photo non disponible',
             style: AppTextStyles.bodySm.copyWith(
@@ -317,7 +317,7 @@ class _FullScreenPhotoState extends State<_FullScreenPhoto> {
               child: Text(
                 'Pincez pour zoomer',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
+                  color: Colors.white.withValues(alpha: 0.5),
                   fontSize: 11,
                 ),
               ),
@@ -416,8 +416,8 @@ class _ZoomablePageState extends State<_ZoomablePage> {
       final y = -position.dy * (scale - 1);
 
       final matrix = Matrix4.identity()
-        ..translate(x, y)
-        ..scale(scale);
+        ..translateByDouble(x, y, 0, 1)
+        ..scaleByDouble(scale, scale, scale, 1);
 
       _transformCtrl.value = matrix;
       setState(() => _isZoomed = true);
